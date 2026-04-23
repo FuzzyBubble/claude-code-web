@@ -58,13 +58,8 @@
   // Server-side diagnostic sink (so we can debug on mobile without devtools).
   function dlog(tag, data) {
     try { console.log('[chat]', tag, data); } catch {}
-    try {
-      fetch('/api/client-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tag: 'chat:' + tag, data: data ?? null }),
-      });
-    } catch {}
+    // Client log forwarding to server disabled now that we've debugged
+    // the mobile flow. Re-enable if something goes pear-shaped.
   }
 
   // ------------------------- Markdown rendering ---------------------------
@@ -171,7 +166,7 @@
     state.busyIntervalId = setInterval(() => {
       i = (i + 1) % BUSY_WORDS.length;
       if (wordEl) wordEl.textContent = BUSY_WORDS[i] + '…';
-    }, 1400);
+    }, 3000);
   }
 
   function hideBusyIndicator() {
