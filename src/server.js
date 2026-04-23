@@ -1405,9 +1405,10 @@ class ClaudeCodeWebServer {
   }
 
   async handleChatMessage(wsId, data) {
-    const { chatId, content, cwd, model, permissionMode, effort, resumeSessionId } = data;
-    if (!chatId || typeof content !== 'string') return;
-    console.log('[chat] message chatId=', chatId, 'cwd=', cwd, 'resume=', resumeSessionId, 'len=', content.length);
+    const { chatId, content, attachments, cwd, model, permissionMode, effort, resumeSessionId } = data;
+    if (!chatId) return;
+    if (typeof content !== 'string' && !attachments) return;
+    console.log('[chat] message chatId=', chatId, 'cwd=', cwd, 'resume=', resumeSessionId, 'len=', (content||'').length, 'attachments=', (attachments||[]).length);
     this.addChatSubscription(wsId, chatId);
 
     // Lazy-spawn: create the session on first send if we don't have one.
@@ -1465,8 +1466,25 @@ class ClaudeCodeWebServer {
       if (effort) session.setEffort(effort);
     }
 
-    session.sendMessage(content);
-    this.broadcastChatEvent(chatId, { type: 'user_message', content });
+    // Build multimodal content if attachments are present.
+    let msgContent = content || '';
+    if (attachments && attachments.length > 0) {
+      const blocks = [];
+      for (const att of attachments) {
+        if (att.type === 'image' && att.data && att.mediaType) {
+          blocks.push({ type: 'image', source: { type: 'base64', media_type: att.mediaType, data: att.data } });
+        } else if (att.type === 'text' && att.text != null) {
+          blocks.push({ type: 'text', text: `[File: ${att.name}]\n\`\`\`\n${att.text}\n\`\`\`` });
+        } else if (att.type === 'file' && att.data) {
+          // Generic binary: mention name + MIME; Claude may not be able to parse it
+          blocks.push({ type: 'text', text: `[Attached file: ${att.name} (${att.mediaType || 'binary'})]` });
+        }
+      }
+      if (content && content.trim()) blocks.push({ type: 'text', text: content });
+      msgContent = blocks;
+    }
+    session.sendMessage(msgContent);
+    this.broadcastChatEvent(chatId, { type: 'user_message', content: content || '' });
   }
 
   handleChatUpdateOptions(wsId, data) {

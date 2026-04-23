@@ -28,6 +28,7 @@
     busy: false,            // agent currently thinking (between user msg and result)
     busyIndicatorEl: null,  // DOM node for the "thinking" bubble
     busyIntervalId: null,
+    attachments: [],        // pending attachments [{name, type, mediaType, data, isImage, objectUrl}]
   };
 
   // Playful status words cycled through while Claude is thinking. Echoes
@@ -162,7 +163,7 @@
     el.messages.appendChild(bar);
     state.busyIndicatorEl = bar;
     state.busy = true;
-    scrollToBottom();
+    scrollToBottomIfNear();
     const wordEl = bar.querySelector('.chat-busy-bar-word');
     let i = Math.floor(Math.random() * BUSY_WORDS.length);
     state.busyIntervalId = setInterval(() => {
@@ -180,8 +181,117 @@
     state.busy = false;
   }
 
+  // Returns true when the messages pane is scrolled within 80px of the
+  // bottom — "close enough" that we should auto-follow new content.
+  function isNearBottom() {
+    if (!el.messages) return true;
+    const { scrollTop, scrollHeight, clientHeight } = el.messages;
+    return scrollHeight - scrollTop - clientHeight < 80;
+  }
+
   function scrollToBottom() {
     el.messages.scrollTop = el.messages.scrollHeight;
+  }
+
+  // Only scroll if the user hasn't scrolled up to read history.
+  function scrollToBottomIfNear() {
+    if (isNearBottom()) scrollToBottom();
+  }
+
+  // ----------------------- Attachments -----------------------------------
+
+  function readFileAsBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // result is "data:<mediaType>;base64,<data>" — strip the prefix
+        const b64 = reader.result.split(',')[1];
+        resolve(b64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function readFileAsText(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsText(file);
+    });
+  }
+
+  async function addFiles(files) {
+    for (const file of files) {
+      const isImage = file.type.startsWith('image/');
+      const isText = file.type.startsWith('text/') ||
+        /\.(js|ts|jsx|tsx|py|php|json|md|csv|xml|yaml|yml|sh|css|html|sql|rb|go|rs|java|c|cpp|h)$/i.test(file.name);
+
+      let att;
+      if (isImage) {
+        const data = await readFileAsBase64(file);
+        const objectUrl = URL.createObjectURL(file);
+        att = { name: file.name, type: 'image', mediaType: file.type || 'image/jpeg', data, isImage: true, objectUrl };
+      } else if (isText) {
+        const text = await readFileAsText(file);
+        att = { name: file.name, type: 'text', text, isImage: false };
+      } else {
+        // Binary non-image: save as base64, tell Claude the filename
+        const data = await readFileAsBase64(file);
+        att = { name: file.name, type: 'file', mediaType: file.type, data, isImage: false };
+      }
+      state.attachments.push(att);
+    }
+    renderAttachPreviews();
+  }
+
+  function removeAttachment(idx) {
+    const att = state.attachments[idx];
+    if (att && att.objectUrl) URL.revokeObjectURL(att.objectUrl);
+    state.attachments.splice(idx, 1);
+    renderAttachPreviews();
+  }
+
+  function clearAttachments() {
+    state.attachments.forEach((a) => { if (a.objectUrl) URL.revokeObjectURL(a.objectUrl); });
+    state.attachments = [];
+    renderAttachPreviews();
+  }
+
+  function renderAttachPreviews() {
+    if (!el.attachPreviews) return;
+    el.attachPreviews.innerHTML = '';
+    if (!state.attachments.length) {
+      el.attachPreviews.style.display = 'none';
+      return;
+    }
+    el.attachPreviews.style.display = 'flex';
+    state.attachments.forEach((att, idx) => {
+      if (att.isImage) {
+        const thumb = document.createElement('div');
+        thumb.className = 'chat-attach-thumb';
+        thumb.innerHTML = '<img src="' + escapeHtml(att.objectUrl) + '" alt="' + escapeHtml(att.name) + '">';
+        const rm = document.createElement('button');
+        rm.className = 'chat-attach-remove';
+        rm.type = 'button';
+        rm.innerHTML = '×';
+        rm.addEventListener('click', () => removeAttachment(idx));
+        thumb.appendChild(rm);
+        el.attachPreviews.appendChild(thumb);
+      } else {
+        const chip = document.createElement('div');
+        chip.className = 'chat-attach-file';
+        chip.innerHTML =
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
+          '<span>' + escapeHtml(att.name) + '</span>' +
+          '<button class="chat-attach-remove-inline" type="button" title="Remove">' +
+            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+          '</button>';
+        chip.querySelector('.chat-attach-remove-inline').addEventListener('click', () => removeAttachment(idx));
+        el.attachPreviews.appendChild(chip);
+      }
+    });
   }
 
   // ------------------------- Transcript loading --------------------------
@@ -299,7 +409,7 @@
         }
         if (text || toolUses.length) {
           appendMessage({ role: 'assistant', text, toolUses });
-          scrollToBottom();
+          scrollToBottomIfNear();
         }
         break;
       }
@@ -316,7 +426,7 @@
                 for (const inner of b.content) if (inner && inner.type === 'text') text += inner.text;
               }
               appendMessage({ role: 'tool_result', text, error: !!b.is_error });
-              scrollToBottom();
+              scrollToBottomIfNear();
             }
           }
         }
@@ -328,7 +438,7 @@
       case 'error':
         hideBusyIndicator();
         appendMessage({ role: 'meta', text: 'Error: ' + (ev.error || 'unknown') });
-        scrollToBottom();
+        scrollToBottomIfNear();
         break;
     }
   }
@@ -385,11 +495,33 @@
 
   async function sendCurrentInput() {
     const content = el.input.value.trim();
-    if (!content || !state.chatId) return;
-    dlog('send', { chatId: state.chatId, live: state.live, len: content.length });
+    const hasAttachments = state.attachments.length > 0;
+    if (!content && !hasAttachments) return;
+    if (!state.chatId) return;
+    dlog('send', { chatId: state.chatId, live: state.live, len: content.length, attachments: state.attachments.length });
+
+    // Snapshot and clear attachments before async work.
+    const attachments = state.attachments.map((a) => {
+      if (a.type === 'image')  return { type: 'image', name: a.name, mediaType: a.mediaType, data: a.data };
+      if (a.type === 'text')   return { type: 'text',  name: a.name, text: a.text };
+      return { type: 'file', name: a.name, mediaType: a.mediaType, data: a.data };
+    });
+    clearAttachments();
+
     // Optimistically render the user message.
-    appendMessage({ role: 'user', text: content });
+    const previewImgs = attachments.filter((a) => a.type === 'image')
+      .map((a) => '<img src="data:' + a.mediaType + ';base64,' + a.data + '" class="chat-attach-inline-img" alt="' + escapeHtml(a.name) + '">');
+    const previewFiles = attachments.filter((a) => a.type !== 'image')
+      .map((a) => '<span class="chat-attach-file-inline">' + escapeHtml(a.name) + '</span>');
+    const previewHtml = [...previewImgs, ...previewFiles].join('') + (content ? '<div class="chat-md">' + renderMarkdown(content) + '</div>' : '');
+    const { wrap, bubble } = msgEl('user');
+    bubble.innerHTML = previewHtml;
+    el.messages.appendChild(wrap);
+    if (state.busyIndicatorEl && state.busyIndicatorEl.parentNode === el.messages) {
+      el.messages.appendChild(state.busyIndicatorEl);
+    }
     scrollToBottom();
+
     el.input.value = '';
     autosize();
     showBusyIndicator();
@@ -400,6 +532,7 @@
       type: 'chat_message',
       chatId: state.chatId,
       content,
+      attachments: attachments.length ? attachments : undefined,
       cwd: state.cwd,
       permissionMode: state.permissionMode,
       effort: state.effort,
@@ -461,13 +594,62 @@
 
     el.sendBtn.addEventListener('click', sendCurrentInput);
     el.stopBtn.addEventListener('click', stopCurrent);
+
+    // Enter behaviour: desktop = send on Enter / new-line on Shift+Enter.
+    //                  mobile  = new-line on Enter (use send button).
+    const isMobile = () => window.matchMedia('(pointer: coarse)').matches;
     el.input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendCurrentInput();
+      if (e.key === 'Enter') {
+        if (isMobile()) {
+          // Mobile: Enter always inserts a newline; tap the send button to send.
+          return;
+        }
+        if (!e.shiftKey) {
+          e.preventDefault();
+          sendCurrentInput();
+        }
+        // Shift+Enter falls through to default (new line).
       }
     });
     el.input.addEventListener('input', autosize);
+
+    // Attach button
+    el.attachBtn    = $('chatAttachBtn');
+    el.attachMenu   = $('chatAttachMenu');
+    el.attachPreviews = $('chatAttachPreviews');
+    el.fileInput    = $('chatFileInput');
+    el.cameraInput  = $('chatCameraInput');
+
+    el.attachBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      el.attachMenu.hidden = !el.attachMenu.hidden;
+    });
+    document.addEventListener('click', () => { if (el.attachMenu) el.attachMenu.hidden = true; });
+
+    $('chatAttachFile').addEventListener('click', () => {
+      el.attachMenu.hidden = true;
+      el.fileInput.value = '';
+      el.fileInput.click();
+    });
+    $('chatAttachPhoto').addEventListener('click', () => {
+      el.attachMenu.hidden = true;
+      // Reuse fileInput but scoped to images/videos for the photo library
+      el.fileInput.accept = 'image/*,video/*';
+      el.fileInput.click();
+      el.fileInput.accept = 'image/*,video/*,application/pdf,text/*,.js,.ts,.py,.php,.json,.md,.csv,.xml,.yaml,.yml,.sh';
+    });
+    $('chatAttachCamera').addEventListener('click', () => {
+      el.attachMenu.hidden = true;
+      el.cameraInput.value = '';
+      el.cameraInput.click();
+    });
+
+    el.fileInput.addEventListener('change', () => {
+      if (el.fileInput.files.length) addFiles(Array.from(el.fileInput.files));
+    });
+    el.cameraInput.addEventListener('change', () => {
+      if (el.cameraInput.files.length) addFiles(Array.from(el.cameraInput.files));
+    });
 
     const MODE_LABELS = {
       bypassPermissions: 'Bypass', default: 'Ask', acceptEdits: 'Accept edits',
