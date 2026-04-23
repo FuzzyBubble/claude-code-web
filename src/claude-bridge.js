@@ -51,6 +51,9 @@ class ClaudeBridge {
     const {
       workingDir = process.cwd(),
       dangerouslySkipPermissions = false,
+      permissionMode = null, // default/acceptEdits/bypassPermissions/plan/auto/dontAsk
+      effort = null,         // low/medium/high/xhigh/max
+      resumeSessionId = null, // existing session UUID to resume
       onOutput = () => {},
       onExit = () => {},
       onError = () => {},
@@ -67,7 +70,13 @@ class ClaudeBridge {
         console.log(`⚠️ WARNING: Skipping permissions with --dangerously-skip-permissions flag`);
       }
 
-      const args = dangerouslySkipPermissions ? ['--dangerously-skip-permissions'] : [];
+      const args = [];
+      if (dangerouslySkipPermissions) args.push('--dangerously-skip-permissions');
+      if (permissionMode && !dangerouslySkipPermissions) {
+        args.push('--permission-mode', permissionMode);
+      }
+      if (effort) args.push('--effort', effort);
+      if (resumeSessionId) args.push('--resume', resumeSessionId);
       const claudeProcess = spawn(this.claudeCommand, args, {
         cwd: workingDir,
         env: {

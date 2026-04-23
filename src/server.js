@@ -12,6 +12,7 @@ const AgentBridge = require('./agent-bridge');
 const SessionStore = require('./utils/session-store');
 const UsageReader = require('./usage-reader');
 const UsageAnalytics = require('./usage-analytics');
+const savedSessions = require('./saved-sessions');
 
 class ClaudeCodeWebServer {
   constructor(options = {}) {
@@ -533,6 +534,22 @@ class ClaudeCodeWebServer {
           message: error.message 
         });
       }
+    });
+
+    // Saved sessions: Claude CLI's on-disk transcripts (read-only listing + delete).
+    this.app.get('/api/saved-sessions', (req, res) => {
+      try {
+        res.json({ sessions: savedSessions.listSavedSessions() });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to list saved sessions', message: error.message });
+      }
+    });
+
+    this.app.delete('/api/saved-sessions/:projectSlug/:sessionId', (req, res) => {
+      const { projectSlug, sessionId } = req.params;
+      const result = savedSessions.deleteSavedSession(projectSlug, sessionId);
+      if (result.ok) res.json({ success: true });
+      else res.status(400).json({ error: result.error });
     });
 
     this.app.get('/', (req, res) => {
