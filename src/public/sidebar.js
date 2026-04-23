@@ -174,6 +174,115 @@
     }
   }
 
+  // Expanded-project state persists across refreshes (and reloads via LS).
+  const LS_OPEN_KEY = 'ccw-sidebar-open-projects';
+  const openProjects = new Set(loadOpenProjects());
+
+  function loadOpenProjects() {
+    try {
+      const raw = localStorage.getItem(LS_OPEN_KEY);
+      if (!raw) return [];
+      const v = JSON.parse(raw);
+      return Array.isArray(v) ? v : [];
+    } catch { return []; }
+  }
+
+  function saveOpenProjects() {
+    try { localStorage.setItem(LS_OPEN_KEY, JSON.stringify(Array.from(openProjects))); } catch {}
+  }
+
+  const ICON_CHEVRON = svg('<polyline points="9 18 15 12 9 6"/>');
+
+  function groupByProject(sessions) {
+    const groups = new Map();
+    for (const s of sessions) {
+      const key = s.projectDir || s.projectSlug || '(unknown)';
+      if (!groups.has(key)) {
+        groups.set(key, {
+          key,
+          label: s.projectDir ? basename(s.projectDir) : s.projectSlug,
+          projectDir: s.projectDir || '',
+          sessions: [],
+          lastActiveMs: 0,
+        });
+      }
+      const g = groups.get(key);
+      g.sessions.push(s);
+      if (s.lastActiveMs > g.lastActiveMs) g.lastActiveMs = s.lastActiveMs;
+    }
+    // Newest project first; sessions within a project also newest first.
+    return Array.from(groups.values())
+      .sort((a, b) => b.lastActiveMs - a.lastActiveMs)
+      .map((g) => {
+        g.sessions.sort((a, b) => b.lastActiveMs - a.lastActiveMs);
+        return g;
+      });
+  }
+
+  function buildSessionItem(s) {
+    const item = document.createElement('div');
+    item.className = 'sidebar-item';
+    item.dataset.sessionId = s.sessionId;
+    item.dataset.projectSlug = s.projectSlug;
+    item.dataset.projectDir = s.projectDir || '';
+    const title = (s.title || '').replace(/\s+/g, ' ').slice(0, 80) || '(no title)';
+    item.innerHTML =
+      '<div class="sidebar-item-top">' +
+        '<div class="sidebar-item-title">' + escapeHtml(title) + '</div>' +
+        '<div class="sidebar-item-actions">' +
+          '<button class="sidebar-item-action resume-btn" title="Resume session">' + ICON_PLAY + '</button>' +
+          '<button class="sidebar-item-action danger delete-btn" title="Delete session">' + ICON_TRASH + '</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="sidebar-item-meta">' +
+        '<span>' + formatRelative(s.lastActiveMs) + '</span>' +
+        '<span>' + (s.messageCount || 0) + ' msgs</span>' +
+      '</div>';
+
+    item.querySelector('.resume-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+    });
+    item.querySelector('.delete-btn').addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteSaved(s.projectSlug, s.sessionId, title);
+    });
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.sidebar-item-action')) return;
+      openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+    });
+    return item;
+  }
+
+  function buildProjectGroup(group) {
+    const wrap = document.createElement('div');
+    wrap.className = 'sidebar-project-group' + (openProjects.has(group.key) ? ' open' : '');
+
+    const header = document.createElement('div');
+    header.className = 'sidebar-project-header';
+    header.innerHTML =
+      '<span class="sidebar-project-chevron">' + ICON_CHEVRON + '</span>' +
+      '<span class="sidebar-project-name" title="' + escapeHtml(group.projectDir || group.key) + '">' +
+        escapeHtml(group.label) +
+      '</span>' +
+      '<span class="sidebar-project-count">' + group.sessions.length + '</span>';
+    header.addEventListener('click', () => {
+      wrap.classList.toggle('open');
+      if (wrap.classList.contains('open')) openProjects.add(group.key);
+      else openProjects.delete(group.key);
+      saveOpenProjects();
+    });
+    wrap.appendChild(header);
+
+    const children = document.createElement('div');
+    children.className = 'sidebar-project-children';
+    for (const s of group.sessions) {
+      children.appendChild(buildSessionItem(s));
+    }
+    wrap.appendChild(children);
+    return wrap;
+  }
+
   function renderSaved(sessions) {
     el.savedCount.textContent = String(sessions.length);
     if (!sessions.length) {
@@ -181,42 +290,8 @@
       return;
     }
     el.savedList.innerHTML = '';
-    for (const s of sessions) {
-      const item = document.createElement('div');
-      item.className = 'sidebar-item';
-      item.dataset.sessionId = s.sessionId;
-      item.dataset.projectSlug = s.projectSlug;
-      item.dataset.projectDir = s.projectDir || '';
-      const title = (s.title || '').replace(/\s+/g, ' ').slice(0, 80) || '(no title)';
-      const project = s.projectDir ? basename(s.projectDir) : s.projectSlug;
-      item.innerHTML =
-        '<div class="sidebar-item-top">' +
-          '<div class="sidebar-item-title">' + escapeHtml(title) + '</div>' +
-          '<div class="sidebar-item-actions">' +
-            '<button class="sidebar-item-action resume-btn" title="Resume session">' + ICON_PLAY + '</button>' +
-            '<button class="sidebar-item-action danger delete-btn" title="Delete session">' + ICON_TRASH + '</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="sidebar-item-project">' + escapeHtml(project) + '</div>' +
-        '<div class="sidebar-item-meta">' +
-          '<span>' + formatRelative(s.lastActiveMs) + '</span>' +
-          '<span>' + (s.messageCount || 0) + ' msgs</span>' +
-        '</div>';
-
-      item.querySelector('.resume-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
-      });
-      item.querySelector('.delete-btn').addEventListener('click', (e) => {
-        e.stopPropagation();
-        deleteSaved(s.projectSlug, s.sessionId, title);
-      });
-      item.addEventListener('click', (e) => {
-        if (e.target.closest('.sidebar-item-action')) return;
-        openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
-      });
-      el.savedList.appendChild(item);
-    }
+    const groups = groupByProject(sessions);
+    for (const g of groups) el.savedList.appendChild(buildProjectGroup(g));
   }
 
   function escapeHtml(s) {

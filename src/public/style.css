@@ -2127,14 +2127,70 @@ body.sidebar-pinned .sidebar-scrim { display: none; }
 
 .sidebar-section {
   padding: 8px 0;
-  flex-shrink: 1;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
+/* Running shows all live sessions (usually few); let it size to its content.
+   Saved can be long — it takes the remaining vertical space and scrolls. */
+.sidebar-section--running { flex: 0 0 auto; }
+.sidebar-section--saved { flex: 1 1 auto; overflow: hidden; }
 .sidebar-section + .sidebar-section {
   border-top: 1px solid var(--sidebar-border);
 }
+.sidebar-section--running .sidebar-list { overflow: visible; }
+.sidebar-section--saved .sidebar-list { overflow-y: auto; }
+
+/* Project grouping in the saved list */
+.sidebar-project-group {
+  margin-bottom: 4px;
+}
+.sidebar-project-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  min-height: 44px;
+}
+.sidebar-project-header:hover { background: var(--sidebar-hover); }
+.sidebar-project-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  color: var(--sidebar-muted);
+}
+.sidebar-project-group.open .sidebar-project-chevron {
+  transform: rotate(90deg);
+}
+.sidebar-project-name {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.sidebar-project-count {
+  background: var(--sidebar-hover);
+  color: var(--sidebar-muted);
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  min-width: 22px;
+  text-align: center;
+}
+.sidebar-project-children {
+  display: none;
+  padding: 2px 0 6px 10px;
+  border-left: 1px solid var(--sidebar-border);
+  margin-left: 18px;
+}
+.sidebar-project-group.open .sidebar-project-children { display: block; }
 
 .sidebar-section-header {
   display: flex;
