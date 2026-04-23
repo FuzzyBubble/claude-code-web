@@ -2263,9 +2263,7 @@ body.sidebar-pinned .sidebar-scrim { display: none; }
 }
 .sidebar-toggle-btn:hover { background: var(--sidebar-hover); }
 
-/* Session start modal */
-#sessionStartModal { display: none; }
-#sessionStartModal.open { display: flex; }
+/* Session start modal — reuses .session-modal/.active plumbing. */
 #sessionStartModal .session-start-dir {
   font-family: var(--font-mono, monospace);
   font-size: 12px;
@@ -2274,13 +2272,30 @@ body.sidebar-pinned .sidebar-scrim { display: none; }
   border-radius: 4px;
   word-break: break-all;
 }
+#sessionStartModal .form-group select {
+  min-height: 44px;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: 6px;
+}
 
-/* Large screens: pin sidebar open */
+/* Large screens: pin sidebar open. */
 @media (min-width: 1024px) {
   .session-sidebar { transform: translateX(0); }
   .sidebar-close-btn { display: none; }
   .sidebar-scrim { display: none; }
-  .sidebar-toggle-btn {
-    /* Still available so user can unpin */
-  }
+}
+
+/* Small screens: make sidebar near-full-width so items are easy to hit. */
+@media (max-width: 600px) {
+  :root { --sidebar-width: 90vw; }
+  .session-sidebar { max-width: 90vw; }
+  .sidebar-item { min-height: 60px; }
+  .sidebar-item-action { min-width: 40px; min-height: 40px; }
+  .sidebar-new-session-btn { font-size: 15px; min-height: 48px; }
+  .sidebar-item-title { font-size: 14px; }
+}
+@media (max-width: 480px) {
+  .session-modal .modal-content { width: 95vw; max-width: 95vw; max-height: 90vh; }
 }

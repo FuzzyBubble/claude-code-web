@@ -290,11 +290,11 @@
     }
     el.startModal.dataset.workingDir = workingDir || '';
     el.startModal.dataset.resumeSessionId = resumeSessionId || '';
-    el.startModal.classList.add('open');
+    el.startModal.classList.add('active');
   }
 
   function closeStartModal() {
-    el.startModal.classList.remove('open');
+    el.startModal.classList.remove('active');
   }
 
   async function startSessionFromModal() {

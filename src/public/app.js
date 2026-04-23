@@ -112,7 +112,19 @@ class ClaudeCodeWebInterface {
         window.addEventListener('resize', () => {
             this.fitTerminal();
         });
-        
+
+        // Soft-keyboard on mobile: the visualViewport shrinks when the
+        // keyboard opens. Fit the terminal to that height so input stays
+        // visible instead of being pushed below the fold.
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', () => {
+                document.documentElement.style.setProperty(
+                    '--viewport-height', window.visualViewport.height + 'px'
+                );
+                this.fitTerminal();
+            });
+        }
+
         window.addEventListener('beforeunload', () => {
             this.disconnect();
         });
