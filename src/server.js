@@ -623,12 +623,16 @@ class ClaudeCodeWebServer {
 
     // Chat-mode: list of chatIds currently live (agent SDK sessions owned
     // by this process). Returned in a shape parallel to /api/sessions/list.
+    // Slug is the canonical Claude CLI encoding of the cwd (replacing all
+    // non-alnum chars with '-') so the client can correctly build
+    // transcript URLs without having to duplicate that encoding itself.
     this.app.get('/api/chat/live', (req, res) => {
       res.json({
         sessions: this.chatManager.all().map((s) => ({
           chatId: s.chatId,
           sessionId: s.sessionId,
           cwd: s.cwd,
+          projectSlug: s.cwd ? s.cwd.replace(/[^A-Za-z0-9]/g, '-') : null,
           model: s.model,
           permissionMode: s.permissionMode,
           effort: s.effort,

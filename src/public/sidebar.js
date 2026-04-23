@@ -185,8 +185,9 @@
       item.addEventListener('click', (e) => {
         if (e.target.closest('.sidebar-item-action')) return;
         if (window.chatView) {
-          // Derive projectSlug from cwd (Claude CLI convention).
-          const slug = (c.cwd || '').replace(/\//g, '-');
+          // Prefer server-provided slug (canonical encoding); fall back
+          // to a safe transform if the server ever omits it.
+          const slug = c.projectSlug || (c.cwd || '').replace(/[^A-Za-z0-9]/g, '-');
           window.chatView.open(slug, c.sessionId || c.chatId, c.cwd);
           if (!SIDEBAR_PINNED_MEDIA.matches) closeSidebar();
         }
