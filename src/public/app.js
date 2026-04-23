@@ -125,6 +125,19 @@ class ClaudeCodeWebInterface {
             });
         }
 
+        // Browser backgrounds tabs (especially on mobile when the screen
+        // locks), which closes the WebSocket. When the user returns,
+        // transparently reconnect instead of leaving them on a
+        // "Connection lost" screen.
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible') return;
+            const disconnected = !this.socket || this.socket.readyState === WebSocket.CLOSED || this.socket.readyState === WebSocket.CLOSING;
+            if (disconnected && this.currentClaudeSessionId) {
+                this.reconnectAttempts = 0;
+                this.reconnect();
+            }
+        });
+
         window.addEventListener('beforeunload', () => {
             this.disconnect();
         });
@@ -547,7 +560,13 @@ class ClaudeCodeWebInterface {
                     this.reconnectAttempts = 0;
                     this.updateStatus('Connected');
                     console.log('Connected to server');
-                    
+                    // If the error overlay was up from a prior dropped
+                    // connection, clear it now that we're back.
+                    const errorEl = document.getElementById('errorMessage');
+                    if (errorEl && errorEl.style.display !== 'none') {
+                        this.hideOverlay();
+                    }
+
                     // Load available sessions
                     this.loadSessions();
                     
