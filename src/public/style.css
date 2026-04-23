@@ -2426,11 +2426,15 @@ body.sidebar-pinned .chat-view { left: var(--sidebar-width); }
 
 .chat-messages {
   flex: 1 1 auto;
+  min-height: 0;                      /* critical: lets this flex item shrink so overflow works */
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;  /* smooth scroll on iOS */
+  overscroll-behavior: contain;
   padding: 16px 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
+  touch-action: pan-y;                /* body sets pan-x pan-y but some children clobber it */
 }
 .chat-empty {
   padding: 24px;
@@ -2520,69 +2524,102 @@ body.sidebar-pinned .chat-view { left: var(--sidebar-width); }
 }
 .chat-tool-result.error summary { background: rgba(248,81,73,0.1); }
 
+/* Composer inspired by Claude.ai: unified card with the textarea on top,
+   a chip row below for mode/effort/model, and the send button docked
+   bottom-right inside the card. */
 .chat-composer {
-  border-top: 1px solid var(--sidebar-border);
-  padding: 8px 10px 10px;
+  padding: 10px 12px 14px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--bg-primary);
+}
+.chat-composer-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 8px 10px 6px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  flex-shrink: 0;
+  transition: border-color 0.15s ease;
 }
-.chat-composer-options {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.chat-composer-options label {
-  font-size: 11px;
-  color: var(--sidebar-muted);
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.chat-composer-options select {
-  min-height: 32px;
-  padding: 4px 8px;
-  font-size: 12.5px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.04);
-  color: var(--sidebar-fg);
-  border: 1px solid var(--sidebar-border);
-}
-.chat-composer-input {
-  display: flex;
-  gap: 8px;
-  align-items: flex-end;
-}
+.chat-composer-card:focus-within { border-color: var(--accent); }
+
 #chatInput {
-  flex: 1;
-  padding: 10px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--sidebar-border);
-  background: rgba(255,255,255,0.04);
-  color: var(--sidebar-fg);
+  width: 100%;
+  padding: 6px 8px 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
   font-family: inherit;
   font-size: 14px;
   resize: none;
   max-height: 180px;
-  line-height: 1.4;
-  min-height: 44px;
+  line-height: 1.45;
+  min-height: 28px;
 }
-#chatInput:focus { outline: none; border-color: #58a6ff; }
+#chatInput:focus { outline: none; }
+#chatInput::placeholder { color: var(--text-secondary); opacity: 0.7; }
+
+.chat-composer-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+}
+.chat-composer-chips {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.chat-composer-chips::-webkit-scrollbar { display: none; }
+
+/* Chip = label + native select overlayed for tap-to-open. */
+.chat-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  border: 1px solid transparent;
+  min-height: 28px;
+}
+.chat-chip:hover { background: var(--border); color: var(--text-primary); }
+.chat-chip .chat-chip-key { color: var(--text-secondary); font-size: 11px; }
+.chat-chip .chat-chip-value { color: var(--text-primary); font-weight: 500; }
+.chat-chip select {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 16px; /* avoid iOS zoom */
+}
+.chat-chip svg { color: var(--text-secondary); }
+
 .chat-send-btn {
-  background: #238636;
+  background: var(--accent);
   color: #fff;
   border: none;
-  border-radius: 8px;
-  padding: 10px 14px;
+  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
   cursor: pointer;
-  min-width: 48px;
-  min-height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-.chat-send-btn:hover { background: #2ea043; }
+.chat-send-btn:hover { background: var(--accent-hover); }
+.chat-send-btn:disabled { opacity: 0.4; cursor: not-allowed; background: var(--border); }
 
 /* Sidebar view toggle — chat vs terminal */
 .sidebar-view-toggle {
@@ -2639,3 +2676,10 @@ body.sidebar-pinned .view-empty { left: var(--sidebar-width); }
 .view-empty-inner svg { color: var(--border-hover); margin-bottom: 12px; }
 .view-empty-inner h2 { font-size: 18px; margin: 0 0 6px; color: var(--text-primary); }
 .view-empty-inner p { font-size: 14px; margin: 0 0 16px; }
+
+/* Mode-switcher and escape floating buttons are terminal-only helpers
+   (Shift+Tab / Esc keys). Hide them in chat view and when no session. */
+body.view-chat #modeSwitcher,
+body.view-empty-shown #modeSwitcher {
+  display: none !important;
+}

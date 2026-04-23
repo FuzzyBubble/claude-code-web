@@ -242,42 +242,50 @@
                 <div class="chat-empty" id="chatEmpty" style="display:none;">Start the conversation below.</div>
 
                 <div class="chat-composer">
-                    <div class="chat-composer-options">
-                        <label>Mode
-                            <select id="chatPermissionMode">
-                                <option value="bypassPermissions" selected>Bypass permissions</option>
-                                <option value="default">Default (ask)</option>
-                                <option value="acceptEdits">Accept edits</option>
-                                <option value="plan">Plan</option>
-                                <option value="auto">Auto</option>
-                                <option value="dontAsk">Don't ask</option>
-                            </select>
-                        </label>
-                        <label>Effort
-                            <select id="chatEffort">
-                                <option value="low">Low</option>
-                                <option value="medium">Medium</option>
-                                <option value="high">High</option>
-                                <option value="xhigh" selected>xHigh</option>
-                                <option value="max">Max</option>
-                            </select>
-                        </label>
-                        <label>Model
-                            <select id="chatModel">
-                                <option value="sonnet" selected>Sonnet</option>
-                                <option value="opus">Opus</option>
-                                <option value="haiku">Haiku</option>
-                            </select>
-                        </label>
-                    </div>
-                    <div class="chat-composer-input">
-                        <textarea id="chatInput" rows="1" placeholder="Message Claude… (Enter to send, Shift+Enter for newline)"></textarea>
-                        <button class="chat-send-btn" id="chatSendBtn" title="Send (Enter)">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <line x1="22" y1="2" x2="11" y2="13"/>
-                                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                            </svg>
-                        </button>
+                    <div class="chat-composer-card">
+                        <textarea id="chatInput" rows="1" placeholder="Message Claude…"></textarea>
+                        <div class="chat-composer-bottom">
+                            <div class="chat-composer-chips">
+                                <label class="chat-chip" id="chatModeChip">
+                                    <span class="chat-chip-value" id="chatModeLabel">Bypass</span>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                    <select id="chatPermissionMode">
+                                        <option value="bypassPermissions" selected>Bypass permissions</option>
+                                        <option value="default">Default (ask)</option>
+                                        <option value="acceptEdits">Accept edits</option>
+                                        <option value="plan">Plan</option>
+                                        <option value="auto">Auto</option>
+                                        <option value="dontAsk">Don't ask</option>
+                                    </select>
+                                </label>
+                                <label class="chat-chip" id="chatEffortChip">
+                                    <span class="chat-chip-value" id="chatEffortLabel">xHigh</span>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                    <select id="chatEffort">
+                                        <option value="low">Low</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="high">High</option>
+                                        <option value="xhigh" selected>xHigh</option>
+                                        <option value="max">Max</option>
+                                    </select>
+                                </label>
+                                <label class="chat-chip" id="chatModelChip">
+                                    <span class="chat-chip-value" id="chatModelLabel">Sonnet</span>
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                                    <select id="chatModel">
+                                        <option value="sonnet" selected>Sonnet</option>
+                                        <option value="opus">Opus</option>
+                                        <option value="haiku">Haiku</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <button class="chat-send-btn" id="chatSendBtn" title="Send (Enter)" aria-label="Send">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                                    <line x1="22" y1="2" x2="11" y2="13"/>
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>

@@ -373,16 +373,35 @@
     });
     el.input.addEventListener('input', autosize);
 
+    const MODE_LABELS = {
+      bypassPermissions: 'Bypass', default: 'Ask', acceptEdits: 'Accept edits',
+      plan: 'Plan', auto: 'Auto', dontAsk: "Don't ask",
+    };
+    const EFFORT_LABELS = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'xHigh', max: 'Max' };
+    const MODEL_LABELS = { sonnet: 'Sonnet', opus: 'Opus', haiku: 'Haiku' };
+
+    function updateChipLabels() {
+      const modeL = document.getElementById('chatModeLabel');
+      const effortL = document.getElementById('chatEffortLabel');
+      const modelL = document.getElementById('chatModelLabel');
+      if (modeL) modeL.textContent = MODE_LABELS[state.permissionMode] || state.permissionMode;
+      if (effortL) effortL.textContent = EFFORT_LABELS[state.effort] || state.effort;
+      if (modelL) modelL.textContent = MODEL_LABELS[state.model] || state.model;
+    }
+
     el.modeSelect.addEventListener('change', () => {
       state.permissionMode = el.modeSelect.value;
+      updateChipLabels();
       if (state.live) sendWS({ type: 'chat_update_options', chatId: state.chatId, permissionMode: state.permissionMode });
     });
     el.effortSelect.addEventListener('change', () => {
       state.effort = el.effortSelect.value;
+      updateChipLabels();
       if (state.live) sendWS({ type: 'chat_update_options', chatId: state.chatId, effort: state.effort });
     });
     el.modelSelect.addEventListener('change', () => {
       state.model = el.modelSelect.value;
+      updateChipLabels();
       if (state.live) sendWS({ type: 'chat_update_options', chatId: state.chatId, model: state.model });
     });
 
@@ -390,6 +409,7 @@
     el.modeSelect.value = state.permissionMode;
     el.effortSelect.value = state.effort;
     el.modelSelect.value = state.model;
+    updateChipLabels();
 
     installWSHook();
   }
