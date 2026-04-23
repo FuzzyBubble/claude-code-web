@@ -84,12 +84,6 @@ class ClaudeCodeWebInterface {
         this.sessionTabManager = new SessionTabManager(this);
         await this.sessionTabManager.init();
         
-        // Initialize split container
-        if (window.SplitContainer) {
-            this.splitContainer = new window.SplitContainer(this);
-            this.splitContainer.setupDropZones();
-        }
-        
         // Show mode switcher on mobile
         if (this.isMobile) {
             this.showModeSwitcher();

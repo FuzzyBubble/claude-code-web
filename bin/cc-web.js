@@ -14,6 +14,7 @@ program
   .version('3.4.0')
   .option('-p, --port <number>', 'port to run the server on', '32352')
   .option('-H, --host <address>', 'address to bind the server to', '0.0.0.0')
+  .option('--projects-root <path>', 'base directory the folder browser is restricted to (env: CCW_PROJECTS_ROOT)', process.env.CCW_PROJECTS_ROOT || '/var/www')
   .option('--no-open', 'do not automatically open browser')
   .option('--auth <token>', 'authentication token for secure access')
   .option('--disable-auth', 'disable authentication (not recommended for production)')
@@ -66,6 +67,7 @@ async function main() {
     const serverOptions = {
       port,
       host: options.host,
+      projectsRoot: options.projectsRoot,
       auth: authToken,
       noAuth: noAuth,
       https: options.https,

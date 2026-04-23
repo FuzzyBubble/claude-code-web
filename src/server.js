@@ -25,7 +25,10 @@ class ClaudeCodeWebServer {
     this.keyFile = options.key;
     this.folderMode = options.folderMode !== false; // Default to true
     this.selectedWorkingDir = null;
-    this.baseFolder = process.cwd(); // The folder where the app runs from
+    // Root directory the folder browser is restricted to. Configurable via
+    // --projects-root / CCW_PROJECTS_ROOT; falls back to the process cwd so
+    // behaviour matches upstream when the flag is unset.
+    this.baseFolder = path.resolve(options.projectsRoot || process.cwd());
     // Session duration in hours (default to 5 hours from first message)
     this.sessionDurationHours = parseFloat(process.env.CLAUDE_SESSION_HOURS || options.sessionHours || 5);
     
