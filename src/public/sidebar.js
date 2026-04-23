@@ -140,6 +140,8 @@
   const ICON_STOP = svg('<rect x="6" y="6" width="12" height="12" rx="1"/>');
   const ICON_PLAY = svg('<polygon points="6 4 20 12 6 20 6 4"/>');
   const ICON_TRASH = svg('<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>');
+  // Circular-arrow swap icon for "take over"
+  const ICON_TAKEOVER = svg('<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>');
 
   function renderRunning(sessions) {
     el.runningCount.textContent = String(sessions.length);
@@ -226,37 +228,73 @@
 
   function buildSessionItem(s) {
     const item = document.createElement('div');
-    item.className = 'sidebar-item';
+    const external = !!s.externalPid;
+    item.className = 'sidebar-item' + (external ? ' external' : '');
     item.dataset.sessionId = s.sessionId;
     item.dataset.projectSlug = s.projectSlug;
     item.dataset.projectDir = s.projectDir || '';
     const title = (s.title || '').replace(/\s+/g, ' ').slice(0, 80) || '(no title)';
+
+    const primaryBtn = external
+      ? '<button class="sidebar-item-action takeover-btn" title="Take over external session (kills pid ' + s.externalPid + ', resumes here)">' + ICON_TAKEOVER + '</button>'
+      : '<button class="sidebar-item-action resume-btn" title="Resume session">' + ICON_PLAY + '</button>';
+
+    const runningBadge = external
+      ? '<span class="sidebar-item-badge" title="Running externally in another terminal (pid ' + s.externalPid + ')">● live</span>'
+      : '';
+
     item.innerHTML =
       '<div class="sidebar-item-top">' +
         '<div class="sidebar-item-title">' + escapeHtml(title) + '</div>' +
         '<div class="sidebar-item-actions">' +
-          '<button class="sidebar-item-action resume-btn" title="Resume session">' + ICON_PLAY + '</button>' +
+          primaryBtn +
           '<button class="sidebar-item-action danger delete-btn" title="Delete session">' + ICON_TRASH + '</button>' +
         '</div>' +
       '</div>' +
       '<div class="sidebar-item-meta">' +
+        runningBadge +
         '<span>' + formatRelative(s.lastActiveMs) + '</span>' +
         '<span>' + (s.messageCount || 0) + ' msgs</span>' +
       '</div>';
 
-    item.querySelector('.resume-btn').addEventListener('click', (e) => {
-      e.stopPropagation();
-      openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
-    });
+    const actionFn = external
+      ? () => takeoverExternal(s)
+      : () => openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+
+    const primary = item.querySelector('.resume-btn') || item.querySelector('.takeover-btn');
+    primary.addEventListener('click', (e) => { e.stopPropagation(); actionFn(); });
     item.querySelector('.delete-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       deleteSaved(s.projectSlug, s.sessionId, title);
     });
     item.addEventListener('click', (e) => {
       if (e.target.closest('.sidebar-item-action')) return;
-      openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+      actionFn();
     });
     return item;
+  }
+
+  async function takeoverExternal(s) {
+    const msg = 'Take over this session?\n\n' +
+      'Pid ' + s.externalPid + ' is currently holding the session in another terminal. ' +
+      'It will be terminated (SIGTERM, then SIGKILL after 2s if needed) and a fresh ' +
+      'claude --resume will start here. The transcript is unaffected.';
+    if (!confirm(msg)) return;
+    try {
+      const r = await fetch('/api/saved-sessions/' + encodeURIComponent(s.projectSlug) + '/' + encodeURIComponent(s.sessionId) + '/takeover', {
+        method: 'POST'
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || r.statusText);
+      }
+      // Give the process a beat to die, then spawn a fresh resume.
+      setTimeout(() => {
+        openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+      }, 600);
+    } catch (err) {
+      alert('Takeover failed: ' + err.message);
+    }
   }
 
   function buildProjectGroup(group) {

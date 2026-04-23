@@ -552,6 +552,13 @@ class ClaudeCodeWebServer {
       else res.status(400).json({ error: result.error });
     });
 
+    this.app.post('/api/saved-sessions/:projectSlug/:sessionId/takeover', (req, res) => {
+      const { projectSlug, sessionId } = req.params;
+      const result = savedSessions.takeoverExternalSession(projectSlug, sessionId);
+      if (result.ok) res.json({ success: true, alreadyGone: !!result.alreadyGone });
+      else res.status(400).json({ error: result.error });
+    });
+
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });

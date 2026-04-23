@@ -8,6 +8,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const externalProcesses = require('./external-processes');
 
 const CLAUDE_PROJECTS_ROOT = path.join(os.homedir(), '.claude', 'projects');
 
@@ -129,6 +130,8 @@ function listSavedSessions() {
     return [];
   }
 
+  // One /proc scan per list call — cheap and keeps the data in sync.
+  const pidMap = externalProcesses.externalSessionPidMap();
   const out = [];
   for (const entry of projectDirs) {
     if (!entry.isDirectory()) continue;
@@ -161,6 +164,7 @@ function listSavedSessions() {
         ? firstUserText.replace(/\s+/g, ' ').slice(0, 80)
         : '(no title)');
 
+      const external = pidMap.get(sessionId) || null;
       out.push({
         sessionId,
         projectSlug,
@@ -169,6 +173,8 @@ function listSavedSessions() {
         lastActiveMs: stat.mtimeMs,
         messageCount,
         sizeBytes: stat.size,
+        externalPid: external ? external.pid : null,
+        externalCwd: external ? external.cwd : null,
       });
     }
   }
@@ -205,9 +211,18 @@ function deleteSavedSession(projectSlug, sessionId) {
   }
 }
 
+function takeoverExternalSession(projectSlug, sessionId) {
+  if (!isUuid(sessionId)) return { ok: false, error: 'Invalid session ID' };
+  const pidMap = externalProcesses.externalSessionPidMap();
+  const match = pidMap.get(sessionId.toLowerCase());
+  if (!match) return { ok: false, error: 'No external process found for this session' };
+  return externalProcesses.terminateProcess(match.pid);
+}
+
 module.exports = {
   listSavedSessions,
   deleteSavedSession,
+  takeoverExternalSession,
   isUuid,
   CLAUDE_PROJECTS_ROOT,
 };
