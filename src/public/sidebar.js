@@ -306,9 +306,16 @@
     const app = window.app;
     if (!app || !app.sessionTabManager) return;
     if (app.sessionTabManager.activeTabId !== sessionId) {
-      app.sessionTabManager.switchToSession(sessionId);
+      // session-manager exposes switchToTab; also call back into app's
+      // hideOverlay in case the empty-state was showing.
+      app.sessionTabManager.switchToTab(sessionId);
+      if (typeof app.hideOverlay === 'function') app.hideOverlay();
     }
     if (!SIDEBAR_PINNED_MEDIA.matches) closeSidebar();
+    // Re-fit terminal to the newly visible main area.
+    setTimeout(() => {
+      if (typeof app.fitTerminal === 'function') app.fitTerminal();
+    }, 50);
   }
 
   async function stopRunning(sessionId) {

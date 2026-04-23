@@ -2351,6 +2351,12 @@ body.sidebar-pinned .sidebar-scrim { display: none; }
   .sidebar-item-action { min-width: 40px; min-height: 40px; }
   .sidebar-new-session-btn { font-size: 15px; min-height: 48px; }
   .sidebar-item-title { font-size: 14px; }
+
+  /* Hide the top tab row on phones — the sidebar is the source of truth
+     for sessions. Keep a slimmer top strip with the hamburger, session
+     name, and settings gear. */
+  .session-tabs-bar .tabs-section { display: none; }
+  .session-tabs-bar .tab-overflow-wrapper { display: none !important; }
 }
 @media (max-width: 480px) {
   .session-modal .modal-content { width: 95vw; max-width: 95vw; max-height: 90vh; }
