@@ -11,9 +11,11 @@
   'use strict';
 
   const SIDEBAR_PINNED_MEDIA = window.matchMedia('(min-width: 1024px)');
+  const LS_VIEW_KEY = 'ccw-active-view';
 
   let uiReady = false;
   let refreshTimer = null;
+  let activeView = localStorage.getItem(LS_VIEW_KEY) || 'chat';
 
   const $ = (id) => document.getElementById(id);
 
@@ -267,7 +269,7 @@
 
     const actionFn = external
       ? () => takeoverExternal(s)
-      : () => openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+      : () => openSavedSession(s);
 
     const primary = item.querySelector('.resume-btn') || item.querySelector('.takeover-btn');
     primary.addEventListener('click', (e) => { e.stopPropagation(); actionFn(); });
@@ -280,6 +282,30 @@
       actionFn();
     });
     return item;
+  }
+
+  // Route a saved-session tap to the active view. Chat view opens the
+  // transcript; terminal view falls back to the old start modal.
+  function openSavedSession(s) {
+    if (activeView === 'chat' && window.chatView) {
+      window.chatView.open(s.projectSlug, s.sessionId, s.projectDir);
+      if (!SIDEBAR_PINNED_MEDIA.matches) closeSidebar();
+    } else {
+      openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+    }
+  }
+
+  function setActiveView(view) {
+    activeView = view;
+    try { localStorage.setItem(LS_VIEW_KEY, view); } catch {}
+    document.querySelectorAll('.view-toggle-btn').forEach((b) => {
+      b.classList.toggle('active', b.dataset.view === view);
+    });
+    if (view === 'chat') {
+      document.body.classList.add('view-chat');
+    } else {
+      document.body.classList.remove('view-chat');
+    }
   }
 
   async function takeoverExternal(s) {
@@ -298,7 +324,7 @@
       }
       // Give the process a beat to die, then spawn a fresh resume.
       setTimeout(() => {
-        openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+        openSavedSession(s);
       }, 600);
     } catch (err) {
       alert('Takeover failed: ' + err.message);
@@ -404,11 +430,17 @@
       alert('Folder browser not ready');
       return;
     }
-    // Stash the original handler so we can intercept.
     const originalHandler = app.onFolderSelected;
     app.onFolderSelected = (path) => {
       app.onFolderSelected = originalHandler;
-      openStartModal({ workingDir: path });
+      // Chat view: open an empty chat with a fresh UUID at this cwd.
+      if (activeView === 'chat' && window.chatView) {
+        const newId = crypto.randomUUID();
+        window.chatView.open('', newId, path);
+      } else {
+        // Terminal view: fall back to the original start modal.
+        openStartModal({ workingDir: path });
+      }
     };
     app.showFolderBrowser();
   }
@@ -494,6 +526,11 @@
     el.scrim && el.scrim.addEventListener('click', closeSidebar);
     const emptyOpenBtn = $('emptyStateOpenSidebarBtn');
     if (emptyOpenBtn) emptyOpenBtn.addEventListener('click', openSidebar);
+
+    document.querySelectorAll('.view-toggle-btn').forEach((btn) => {
+      btn.addEventListener('click', () => setActiveView(btn.dataset.view));
+    });
+    setActiveView(activeView);
     el.newBtn && el.newBtn.addEventListener('click', handleNewSessionClick);
     el.sessionStartGoBtn && el.sessionStartGoBtn.addEventListener('click', startSessionFromModal);
     el.sessionStartCancelBtn && el.sessionStartCancelBtn.addEventListener('click', closeStartModal);

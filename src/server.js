@@ -12,7 +12,10 @@ const AgentBridge = require('./agent-bridge');
 const SessionStore = require('./utils/session-store');
 const UsageReader = require('./usage-reader');
 const UsageAnalytics = require('./usage-analytics');
+const os = require('os');
 const savedSessions = require('./saved-sessions');
+const { ChatSessionManager } = require('./chat-session-manager');
+const { parseTranscript } = require('./chat-transcript');
 
 class ClaudeCodeWebServer {
   constructor(options = {}) {
@@ -39,6 +42,9 @@ class ClaudeCodeWebServer {
     this.claudeBridge = new ClaudeBridge();
     this.codexBridge = new CodexBridge();
     this.agentBridge = new AgentBridge();
+    this.chatManager = new ChatSessionManager();
+    // ws connection id -> Set of chatIds they're subscribed to
+    this.chatSubscriptions = new Map();
     this.sessionStore = new SessionStore();
     this.usageReader = new UsageReader(this.sessionDurationHours);
     this.usageAnalytics = new UsageAnalytics({
@@ -60,6 +66,39 @@ class ClaudeCodeWebServer {
     this.setupExpress();
     this.loadPersistedSessions();
     this.setupAutoSave();
+    this.setupChatAutoClose();
+  }
+
+  // Close chat sessions whose transcripts haven't been touched in
+  // IDLE_MINUTES. Runs every 5 minutes. Each claude child process owns
+  // ~500MB of RAM so letting them pile up drains the server.
+  setupChatAutoClose() {
+    const IDLE_MINUTES = parseFloat(process.env.CCW_CHAT_IDLE_MINUTES || '30');
+    const fsMod = require('fs');
+    const pathMod = require('path');
+    const osMod = require('os');
+    setInterval(() => {
+      const cutoff = Date.now() - IDLE_MINUTES * 60 * 1000;
+      for (const session of this.chatManager.all()) {
+        if (session.closed) continue;
+        // Prefer on-disk mtime (SDK writes per turn) — falls back to
+        // in-process lastActivityMs if we never saw a sessionId.
+        let lastMs = session.lastActivityMs;
+        if (session.sessionId) {
+          try {
+            const slug = session.cwd.replace(/\//g, '-');
+            const jsonl = pathMod.join(osMod.homedir(), '.claude', 'projects', slug, session.sessionId + '.jsonl');
+            const st = fsMod.statSync(jsonl);
+            lastMs = Math.max(lastMs, st.mtimeMs);
+          } catch {}
+        }
+        if (lastMs < cutoff) {
+          console.log('[chat-autoclose] closing idle chat', session.chatId, 'last:', new Date(lastMs).toISOString());
+          this.broadcastChatEvent(session.chatId, { type: 'closed', reason: 'idle' });
+          this.chatManager.close(session.chatId);
+        }
+      }
+    }, 5 * 60 * 1000);
   }
   
   async loadPersistedSessions() {
@@ -559,6 +598,46 @@ class ClaudeCodeWebServer {
       else res.status(400).json({ error: result.error });
     });
 
+    // Chat-mode: parsed transcript for a saved session (read-only).
+    this.app.get('/api/chat/:projectSlug/:sessionId/transcript', (req, res) => {
+      const { projectSlug, sessionId } = req.params;
+      if (!/^[0-9a-f-]{36}$/i.test(sessionId)) {
+        return res.status(400).json({ error: 'Invalid session id' });
+      }
+      if (projectSlug.includes('/') || projectSlug.includes('..')) {
+        return res.status(400).json({ error: 'Invalid project slug' });
+      }
+      const filePath = path.join(os.homedir(), '.claude', 'projects', projectSlug, sessionId + '.jsonl');
+      const result = parseTranscript(filePath);
+      res.json(result);
+    });
+
+    // Chat-mode: list of chatIds currently live (agent SDK sessions owned
+    // by this process). Returned in a shape parallel to /api/sessions/list.
+    this.app.get('/api/chat/live', (req, res) => {
+      res.json({
+        sessions: this.chatManager.all().map((s) => ({
+          chatId: s.chatId,
+          sessionId: s.sessionId,
+          cwd: s.cwd,
+          model: s.model,
+          permissionMode: s.permissionMode,
+          effort: s.effort,
+          closed: s.closed,
+          lastActivityMs: s.lastActivityMs,
+        })),
+      });
+    });
+
+    // Exit a live chat session (graceful — close the MessageQueue, the
+    // SDK will wind down its child claude process).
+    this.app.delete('/api/chat/live/:chatId', (req, res) => {
+      const { chatId } = req.params;
+      if (!this.chatManager.has(chatId)) return res.status(404).json({ error: 'Not running' });
+      this.chatManager.close(chatId);
+      res.json({ success: true });
+    });
+
     this.app.get('/', (req, res) => {
       res.sendFile(path.join(__dirname, 'public', 'index.html'));
     });
@@ -774,6 +853,23 @@ class ClaudeCodeWebServer {
 
       case 'get_usage':
         this.handleGetUsage(wsInfo);
+        break;
+
+      // ---- Chat-mode (Claude Agent SDK) ----
+      case 'chat_subscribe':
+        this.handleChatSubscribe(wsId, data);
+        break;
+
+      case 'chat_message':
+        this.handleChatMessage(wsId, data);
+        break;
+
+      case 'chat_update_options':
+        this.handleChatUpdateOptions(wsId, data);
+        break;
+
+      case 'chat_unsubscribe':
+        this.handleChatUnsubscribe(wsId, data.chatId);
         break;
 
       default:
@@ -1199,6 +1295,10 @@ class ClaudeCodeWebServer {
     const wsInfo = this.webSocketConnections.get(wsId);
     if (!wsInfo) return;
 
+    // Drop chat subscriptions — the ChatSession itself stays alive so
+    // the user can reconnect and resume listening.
+    this.chatSubscriptions.delete(wsId);
+
     // Remove from Claude session if joined
     if (wsInfo.claudeSessionId) {
       const session = this.claudeSessions.get(wsInfo.claudeSessionId);
@@ -1248,6 +1348,95 @@ class ClaudeCodeWebServer {
     // Clear all data
     this.claudeSessions.clear();
     this.webSocketConnections.clear();
+  }
+
+  // ------------------------- Chat-mode handlers -------------------------
+
+  addChatSubscription(wsId, chatId) {
+    let set = this.chatSubscriptions.get(wsId);
+    if (!set) {
+      set = new Set();
+      this.chatSubscriptions.set(wsId, set);
+    }
+    set.add(chatId);
+  }
+  removeChatSubscription(wsId, chatId) {
+    const set = this.chatSubscriptions.get(wsId);
+    if (set) set.delete(chatId);
+  }
+
+  broadcastChatEvent(chatId, payload) {
+    const msg = { type: 'chat_event', chatId, event: payload };
+    for (const [wsId, set] of this.chatSubscriptions) {
+      if (!set.has(chatId)) continue;
+      const info = this.webSocketConnections.get(wsId);
+      if (info && info.ws) this.sendToWebSocket(info.ws, msg);
+    }
+  }
+
+  handleChatSubscribe(wsId, data) {
+    const { chatId } = data;
+    if (!chatId) return;
+    this.addChatSubscription(wsId, chatId);
+    const info = this.webSocketConnections.get(wsId);
+    if (!info) return;
+    const session = this.chatManager.get(chatId);
+    this.sendToWebSocket(info.ws, {
+      type: 'chat_subscribed',
+      chatId,
+      live: !!session && !session.closed,
+      sessionId: session ? session.sessionId : null,
+    });
+  }
+
+  handleChatUnsubscribe(wsId, chatId) {
+    this.removeChatSubscription(wsId, chatId);
+  }
+
+  async handleChatMessage(wsId, data) {
+    const { chatId, content, cwd, model, permissionMode, effort, resumeSessionId } = data;
+    if (!chatId || typeof content !== 'string') return;
+    this.addChatSubscription(wsId, chatId);
+
+    // Lazy-spawn: create the session on first send if we don't have one.
+    let session = this.chatManager.get(chatId);
+    if (!session || session.closed) {
+      const workingDir = cwd || this.selectedWorkingDir || this.baseFolder;
+      session = this.chatManager.ensure(chatId, {
+        cwd: workingDir,
+        sessionId: resumeSessionId || null,
+        model, permissionMode, effort,
+        onEvent: (ev) => this.broadcastChatEvent(chatId, ev),
+        onClose: () => {
+          this.broadcastChatEvent(chatId, { type: 'closed' });
+          // Keep the entry in manager so subscribers see the final state,
+          // but drop it after a beat so it can be garbage-collected.
+          setTimeout(() => {
+            const cur = this.chatManager.get(chatId);
+            if (cur && cur.closed) this.chatManager.close(chatId);
+          }, 2000);
+        },
+      });
+      await session.start();
+      this.broadcastChatEvent(chatId, { type: 'started', sessionId: session.sessionId });
+    } else {
+      // Update mid-chat options if provided
+      if (model) session.setModel(model);
+      if (permissionMode) session.setPermissionMode(permissionMode);
+      if (effort) session.setEffort(effort);
+    }
+
+    session.sendMessage(content);
+    this.broadcastChatEvent(chatId, { type: 'user_message', content });
+  }
+
+  handleChatUpdateOptions(wsId, data) {
+    const { chatId, model, permissionMode, effort } = data;
+    const session = this.chatManager.get(chatId);
+    if (!session) return;
+    if (model) session.setModel(model);
+    if (permissionMode) session.setPermissionMode(permissionMode);
+    if (effort) session.setEffort(effort);
   }
 
   async handleGetUsage(wsInfo) {
