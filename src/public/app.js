@@ -204,22 +204,41 @@ class ClaudeCodeWebInterface {
     }
     
     disablePullToRefresh() {
-        // Prevent pull-to-refresh on touchmove
+        // Prevent pull-to-refresh on touchmove — but ONLY when the
+        // gesture isn't happening inside a scrollable overflow container
+        // (chat messages, tool-output panes, etc.). Without this guard
+        // we'd block legitimate scrolling in any flex/overflow:auto area.
         let lastY = 0;
-        
+
         document.addEventListener('touchstart', (e) => {
             lastY = e.touches[0].clientY;
         }, { passive: false });
-        
+
         document.addEventListener('touchmove', (e) => {
             const y = e.touches[0].clientY;
             const scrollTop = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
-            
-            // Prevent pull-to-refresh when at the top and trying to scroll up
+
             if (scrollTop === 0 && y > lastY) {
-                e.preventDefault();
+                // Walk up the DOM from the touch target; if any ancestor
+                // is its own scroll container, let the gesture through.
+                let node = e.target;
+                let inScrollable = false;
+                while (node && node !== document.body) {
+                    if (node.nodeType === 1) {
+                        const style = getComputedStyle(node);
+                        const oy = style.overflowY;
+                        if ((oy === 'auto' || oy === 'scroll') && node.scrollHeight > node.clientHeight) {
+                            inScrollable = true;
+                            break;
+                        }
+                    }
+                    node = node.parentNode;
+                }
+                if (!inScrollable) {
+                    e.preventDefault();
+                }
             }
-            
+
             lastY = y;
         }, { passive: false });
         

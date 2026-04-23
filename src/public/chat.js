@@ -198,6 +198,13 @@
     if (!ev) return;
 
     switch (ev.type) {
+      case 'system':
+        // Init or config events — just note the session is alive.
+        if (ev.subtype === 'init') {
+          state.live = true;
+          updateStatus();
+        }
+        break;
       case 'started':
         state.live = true;
         updateStatus();

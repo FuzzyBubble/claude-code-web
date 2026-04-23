@@ -712,12 +712,10 @@ class ClaudeCodeWebServer {
         const data = JSON.parse(message);
         await this.handleMessage(wsId, data);
       } catch (error) {
-        if (this.dev) {
-          console.error('Error handling message:', error);
-        }
+        console.error('Error handling WS message:', error);
         this.sendToWebSocket(ws, {
           type: 'error',
-          message: 'Failed to process message'
+          message: 'Failed to process message: ' + (error && error.message || 'unknown')
         });
       }
     });
@@ -1396,6 +1394,7 @@ class ClaudeCodeWebServer {
   async handleChatMessage(wsId, data) {
     const { chatId, content, cwd, model, permissionMode, effort, resumeSessionId } = data;
     if (!chatId || typeof content !== 'string') return;
+    console.log('[chat] message chatId=', chatId, 'cwd=', cwd, 'resume=', resumeSessionId, 'len=', content.length);
     this.addChatSubscription(wsId, chatId);
 
     // Lazy-spawn: create the session on first send if we don't have one.
@@ -1418,11 +1417,15 @@ class ClaudeCodeWebServer {
         }
       }
 
+      console.log('[chat] creating session for', chatId, 'cwd=', workingDir);
       session = this.chatManager.ensure(chatId, {
         cwd: workingDir,
         sessionId: resumeSessionId || null,
         model, permissionMode, effort,
-        onEvent: (ev) => this.broadcastChatEvent(chatId, ev),
+        onEvent: (ev) => {
+          console.log('[chat][ev]', chatId, ev && ev.type, ev && ev.subtype);
+          this.broadcastChatEvent(chatId, ev);
+        },
         onClose: () => {
           this.broadcastChatEvent(chatId, { type: 'closed' });
           // Keep the entry in manager so subscribers see the final state,
@@ -1433,7 +1436,14 @@ class ClaudeCodeWebServer {
           }, 2000);
         },
       });
-      await session.start();
+      try {
+        await session.start();
+        console.log('[chat] session.start() returned');
+      } catch (err) {
+        console.error('[chat] session.start() failed:', err);
+        this.broadcastChatEvent(chatId, { type: 'error', error: err.message });
+        return;
+      }
       this.broadcastChatEvent(chatId, { type: 'started', sessionId: session.sessionId });
     } else {
       // Update mid-chat options if provided
