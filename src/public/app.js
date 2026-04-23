@@ -129,13 +129,23 @@ class ClaudeCodeWebInterface {
         // locks), which closes the WebSocket. When the user returns,
         // transparently reconnect instead of leaving them on a
         // "Connection lost" screen.
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState !== 'visible') return;
+        // Reconnect whenever the tab becomes visible again — covers phone
+        // lock-screen, tab switching, and app backgrounding. No session
+        // requirement; the WS is always needed.
+        const handleVisibleReconnect = () => {
             const disconnected = !this.socket || this.socket.readyState === WebSocket.CLOSED || this.socket.readyState === WebSocket.CLOSING;
-            if (disconnected && this.currentClaudeSessionId) {
+            if (disconnected) {
                 this.reconnectAttempts = 0;
                 this.reconnect();
             }
+        };
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') handleVisibleReconnect();
+        });
+        // Also reconnect when network comes back online.
+        window.addEventListener('online', () => {
+            this.reconnectAttempts = 0;
+            handleVisibleReconnect();
         });
 
         window.addEventListener('beforeunload', () => {
@@ -609,19 +619,21 @@ class ClaudeCodeWebInterface {
             
             this.socket.onclose = (event) => {
                 this.updateStatus('Disconnected');
-                // Reconnect button removed with header
-                
-                if (!event.wasClean && this.reconnectAttempts < this.maxReconnectAttempts) {
-                    setTimeout(() => this.reconnect(), this.reconnectDelay * Math.pow(2, this.reconnectAttempts));
+                // Never show a blocking error overlay for dropped WS connections.
+                // Just retry silently with capped exponential backoff, forever.
+                // The user will see the UI unblock as soon as it reconnects.
+                if (!this._manualDisconnect) {
+                    const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts), 30000);
                     this.reconnectAttempts++;
-                } else {
-                    this.showError('Connection lost. Please check your network and try again.');
+                    setTimeout(() => this.reconnect(), delay);
                 }
+                this._manualDisconnect = false;
             };
-            
+
             this.socket.onerror = (error) => {
                 console.error('WebSocket error:', error);
-                this.showError('Failed to connect to the server');
+                // Don't show blocking overlay — onclose will fire next and
+                // schedule a silent retry.
                 reject(error);
             };
             
@@ -635,6 +647,7 @@ class ClaudeCodeWebInterface {
 
     disconnect() {
         if (this.socket) {
+            this._manualDisconnect = true;
             this.socket.close();
             this.socket = null;
         }
