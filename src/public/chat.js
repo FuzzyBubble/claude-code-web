@@ -335,6 +335,23 @@
 
   // ------------------------- Actions -------------------------------------
 
+  const LAST_SESSION_KEY = 'chatLastSession';
+
+  function saveLastSession(projectSlug, sessionId, cwd) {
+    try { localStorage.setItem(LAST_SESSION_KEY, JSON.stringify({ projectSlug, sessionId, cwd })); } catch {}
+  }
+  function clearLastSession() {
+    try { localStorage.removeItem(LAST_SESSION_KEY); } catch {}
+  }
+  function restoreLastSession() {
+    try {
+      const raw = localStorage.getItem(LAST_SESSION_KEY);
+      if (!raw) return;
+      const { projectSlug, sessionId, cwd } = JSON.parse(raw);
+      if (projectSlug && sessionId) open(projectSlug, sessionId, cwd);
+    } catch {}
+  }
+
   async function open(projectSlug, sessionId, cwd) {
     dlog('open', { projectSlug, sessionId, cwd });
     state.projectSlug = projectSlug;
@@ -350,6 +367,8 @@
       clearMessages();
       el.empty.style.display = '';
     }
+    // Persist so a page reload reopens this session automatically.
+    saveLastSession(projectSlug, sessionId, cwd);
     // Subscribe so we receive live events if someone else is already
     // chatting in this session (or if takeover happens).
     sendWS({ type: 'chat_subscribe', chatId: sessionId });
@@ -489,6 +508,10 @@
     updateChipLabels();
 
     installWSHook();
+
+    // Reopen the last session on page reload so the user lands straight
+    // back in their chat rather than the empty-state screen.
+    restoreLastSession();
   }
 
   if (document.readyState === 'loading') {
