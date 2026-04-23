@@ -24,8 +24,21 @@
     permissionMode: 'bypassPermissions',
     effort: 'xhigh',
     model: 'sonnet',
-    streamingAssistant: null, // DOM node of the currently-streaming assistant bubble
+    streamingAssistant: null,
+    busy: false,            // agent currently thinking (between user msg and result)
+    busyIndicatorEl: null,  // DOM node for the "thinking" bubble
+    busyIntervalId: null,
   };
+
+  // Playful status words cycled through while Claude is thinking. Echoes
+  // the CLI's fun verbs ("Flibbertyjibbeting", etc.) so the web UI feels
+  // like the same tool.
+  const BUSY_WORDS = [
+    'Thinking', 'Flibbertyjibbeting', 'Clauding', 'Pondering', 'Considering',
+    'Cogitating', 'Ruminating', 'Contemplating', 'Hypothesizing', 'Mulling',
+    'Ideating', 'Synthesizing', 'Weighing', 'Deducing', 'Brewing', 'Percolating',
+    'Tinkering', 'Scheming', 'Puzzling', 'Reckoning', 'Doing the thing',
+  ];
 
   const el = {
     root: null,
@@ -128,6 +141,36 @@
     el.messages.innerHTML = '';
   }
 
+  function showBusyIndicator() {
+    if (state.busyIndicatorEl) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'chat-msg chat-msg--busy';
+    wrap.innerHTML =
+      '<div class="chat-busy">' +
+        '<span class="chat-busy-dots"><span></span><span></span><span></span></span>' +
+        '<span class="chat-busy-word">Thinking</span>' +
+      '</div>';
+    el.messages.appendChild(wrap);
+    state.busyIndicatorEl = wrap;
+    state.busy = true;
+    scrollToBottom();
+    const wordEl = wrap.querySelector('.chat-busy-word');
+    let i = Math.floor(Math.random() * BUSY_WORDS.length);
+    state.busyIntervalId = setInterval(() => {
+      i = (i + 1) % BUSY_WORDS.length;
+      if (wordEl) wordEl.textContent = BUSY_WORDS[i] + '…';
+    }, 1400);
+  }
+
+  function hideBusyIndicator() {
+    if (state.busyIntervalId) { clearInterval(state.busyIntervalId); state.busyIntervalId = null; }
+    if (state.busyIndicatorEl && state.busyIndicatorEl.parentNode) {
+      state.busyIndicatorEl.parentNode.removeChild(state.busyIndicatorEl);
+    }
+    state.busyIndicatorEl = null;
+    state.busy = false;
+  }
+
   function scrollToBottom() {
     el.messages.scrollTop = el.messages.scrollHeight;
   }
@@ -176,9 +219,14 @@
   // down the same connection as terminal events.
   function installWSHook() {
     if (!window.app) return setTimeout(installWSHook, 100);
-    const orig = window.app.handleMessage && window.app.handleMessage.bind(window.app);
+    const proto = Object.getPrototypeOf(window.app);
+    const orig = (proto && proto.handleMessage) || window.app.handleMessage;
     if (!orig) return setTimeout(installWSHook, 100);
+    const boundOrig = orig.bind(window.app);
     window.app.handleMessage = function (message) {
+      if (message && (message.type === 'chat_event' || message.type === 'chat_subscribed')) {
+        console.log('[chat]', message.type, message.chatId, message.event && message.event.type);
+      }
       if (message && message.type === 'chat_event') {
         handleChatEvent(message);
         return;
@@ -188,8 +236,9 @@
         updateStatus();
         return;
       }
-      return orig(message);
+      return boundOrig(message);
     };
+    console.log('[chat] WS hook installed');
   }
 
   function handleChatEvent(msg) {
@@ -218,6 +267,7 @@
         // Already rendered optimistically on send; nothing to do.
         break;
       case 'assistant': {
+        hideBusyIndicator();
         // SDK emits a full assistant message per turn — render the text
         // and any tool_use blocks.
         const msgInner = ev.message || {};
@@ -257,9 +307,10 @@
         break;
       }
       case 'result':
-        // End-of-turn marker; no UI needed beyond status.
+        hideBusyIndicator();
         break;
       case 'error':
+        hideBusyIndicator();
         appendMessage({ role: 'meta', text: 'Error: ' + (ev.error || 'unknown') });
         scrollToBottom();
         break;
@@ -304,6 +355,7 @@
     scrollToBottom();
     el.input.value = '';
     autosize();
+    showBusyIndicator();
 
     // Lazy-spawn happens server-side on first chat_message.
     const resumeId = state.live ? null : state.chatId;

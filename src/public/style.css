@@ -2683,3 +2683,39 @@ body.view-chat #modeSwitcher,
 body.view-empty-shown #modeSwitcher {
   display: none !important;
 }
+
+/* "Claude is thinking" indicator — shown between sending a message and
+   the first assistant event arriving. Cycles through fun verbs like
+   the CLI's status spinner. */
+.chat-msg--busy { justify-content: flex-start; }
+.chat-busy {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+.chat-busy-word::after { content: '…'; }
+.chat-busy-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+.chat-busy-dots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.4;
+  animation: chatBusyDot 1s infinite ease-in-out;
+}
+.chat-busy-dots span:nth-child(2) { animation-delay: 0.15s; }
+.chat-busy-dots span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes chatBusyDot {
+  0%, 80%, 100% { opacity: 0.3; transform: scale(0.9); }
+  40% { opacity: 1; transform: scale(1.2); }
+}
