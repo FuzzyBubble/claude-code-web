@@ -16,6 +16,7 @@ const UsageAnalytics = require('./usage-analytics');
 class ClaudeCodeWebServer {
   constructor(options = {}) {
     this.port = options.port || 32352;
+    this.host = options.host || '0.0.0.0';
     this.auth = options.auth;
     this.noAuth = options.noAuth || false;
     this.dev = options.dev || false;
@@ -568,7 +569,7 @@ class ClaudeCodeWebServer {
     });
 
     return new Promise((resolve, reject) => {
-      server.listen(this.port, (err) => {
+      server.listen(this.port, this.host, (err) => {
         if (err) {
           reject(err);
         } else {

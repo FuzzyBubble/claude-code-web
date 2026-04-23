@@ -13,6 +13,7 @@ program
   .description('Web-based interface for Claude Code CLI')
   .version('3.4.0')
   .option('-p, --port <number>', 'port to run the server on', '32352')
+  .option('-H, --host <address>', 'address to bind the server to', '0.0.0.0')
   .option('--no-open', 'do not automatically open browser')
   .option('--auth <token>', 'authentication token for secure access')
   .option('--disable-auth', 'disable authentication (not recommended for production)')
@@ -64,6 +65,7 @@ async function main() {
 
     const serverOptions = {
       port,
+      host: options.host,
       auth: authToken,
       noAuth: noAuth,
       https: options.https,
