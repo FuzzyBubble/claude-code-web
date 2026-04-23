@@ -829,7 +829,7 @@ class ClaudeCodeWebInterface {
         // If no session, create one first
         if (!this.currentClaudeSessionId) {
             const sessionName = `Session ${new Date().toLocaleString()}`;
-            this.send({ 
+            this.send({
                 type: 'create_session',
                 name: sessionName,
                 workingDir: this.selectedWorkingDir
@@ -841,12 +841,51 @@ class ClaudeCodeWebInterface {
         } else {
             this.send({ type: 'start_claude', options });
         }
-        
+
         this.showOverlay('loadingSpinner');
-        const loadingText = options.dangerouslySkipPermissions ? 
-            `Starting ${this.getAlias('claude')} (skipping permissions)...` : 
+        const loadingText = options.dangerouslySkipPermissions ?
+            `Starting ${this.getAlias('claude')} (skipping permissions)...` :
             `Starting ${this.getAlias('claude')}...`;
         document.getElementById('loadingSpinner').querySelector('p').textContent = loadingText;
+    }
+
+    // Sidebar-driven session start: always creates a NEW tab, ignoring any
+    // current session, and passes permissionMode/effort/resumeSessionId
+    // through to the server.
+    async startClaudeSessionWithOptions({ workingDir, options = {} } = {}) {
+        // Ensure we have an open WebSocket. On cold load nothing is connected
+        // until the user picks a folder, so do it lazily here.
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+            if (workingDir) {
+                await this.authFetch('/api/folders/select', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: workingDir }),
+                });
+            }
+            await this.connect();
+        }
+
+        // Force creation of a new session instead of starting in the current one.
+        this.currentClaudeSessionId = null;
+
+        const label = (workingDir || '').split('/').filter(Boolean).pop() || 'Session';
+        const sessionName = options.resumeSessionId
+            ? `${label} (resumed)`
+            : `${label} — ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+        this.send({
+            type: 'create_session',
+            name: sessionName,
+            workingDir: workingDir || this.selectedWorkingDir,
+        });
+        setTimeout(() => {
+            this.send({ type: 'start_claude', options });
+        }, 500);
+
+        this.showOverlay('loadingSpinner');
+        document.getElementById('loadingSpinner').querySelector('p').textContent =
+            options.resumeSessionId ? 'Resuming session…' : 'Starting Claude…';
     }
 
     startCodexSession(options = {}) {
@@ -1264,7 +1303,19 @@ class ClaudeCodeWebInterface {
             this.showError('No folder selected');
             return;
         }
-        
+
+        // Allow other code (e.g. the sidebar) to intercept folder selection
+        // and drive its own flow rather than going through the default
+        // session-modal path.
+        if (typeof this.onFolderSelected === 'function') {
+            const cb = this.onFolderSelected;
+            this.onFolderSelected = null;
+            const pathForCb = this.currentFolderPath;
+            this.closeFolderBrowser();
+            try { await cb(pathForCb); } catch (e) { console.error(e); }
+            return;
+        }
+
         // Store the selected working directory
         this.selectedWorkingDir = this.currentFolderPath;
         

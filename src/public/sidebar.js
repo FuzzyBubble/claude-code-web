@@ -1,0 +1,393 @@
+/**
+ * Session sidebar: lists running (live PTY) sessions and saved sessions
+ * (Claude CLI's on-disk ~/.claude/projects transcripts). Owns the new-session
+ * flow (folder pick + mode/effort dropdowns) and per-item actions (attach,
+ * stop, resume, delete).
+ *
+ * Depends on window.app (ClaudeCodeWebUI instance) for folder-browser reuse
+ * and session creation. Loads lazily once window.app is ready.
+ */
+(function () {
+  'use strict';
+
+  const SIDEBAR_PINNED_MEDIA = window.matchMedia('(min-width: 1024px)');
+
+  let uiReady = false;
+  let refreshTimer = null;
+
+  const $ = (id) => document.getElementById(id);
+
+  const el = {
+    sidebar: null,
+    scrim: null,
+    toggleBtn: null,
+    closeBtn: null,
+    newBtn: null,
+    runningList: null,
+    savedList: null,
+    runningCount: null,
+    savedCount: null,
+    startModal: null,
+    startModalDir: null,
+    startModalResumeWrap: null,
+    startModalResumeId: null,
+    permissionModeSelect: null,
+    effortSelect: null,
+    sessionStartGoBtn: null,
+    sessionStartCancelBtn: null,
+    closeSessionStartBtn: null,
+  };
+
+  // ------------------------- sidebar open/close -----------------------------
+
+  function updatePinnedState() {
+    if (SIDEBAR_PINNED_MEDIA.matches) {
+      document.body.classList.add('sidebar-pinned');
+      el.sidebar.classList.add('open');
+      el.scrim.classList.remove('open');
+    } else {
+      document.body.classList.remove('sidebar-pinned');
+      // Leave current open state; user decides.
+    }
+  }
+
+  function openSidebar() {
+    el.sidebar.classList.add('open');
+    if (!SIDEBAR_PINNED_MEDIA.matches) {
+      el.scrim.classList.add('open');
+    }
+    refresh();
+  }
+
+  function closeSidebar() {
+    if (SIDEBAR_PINNED_MEDIA.matches) {
+      document.body.classList.remove('sidebar-pinned');
+      el.scrim.classList.remove('open');
+      // Keep sidebar element visible? No — unpin means hidden.
+      el.sidebar.classList.remove('open');
+    } else {
+      el.sidebar.classList.remove('open');
+      el.scrim.classList.remove('open');
+    }
+  }
+
+  function toggleSidebar() {
+    if (el.sidebar.classList.contains('open')) closeSidebar();
+    else openSidebar();
+  }
+
+  // ------------------------- data fetching ----------------------------------
+
+  async function fetchJson(url, opts) {
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error(`${url}: ${r.status}`);
+    return r.json();
+  }
+
+  async function refreshRunning() {
+    try {
+      const data = await fetchJson('/api/sessions/list');
+      renderRunning(data.sessions || []);
+    } catch (err) {
+      console.warn('[sidebar] failed to load running sessions', err);
+    }
+  }
+
+  async function refreshSaved() {
+    try {
+      const data = await fetchJson('/api/saved-sessions');
+      renderSaved(data.sessions || []);
+    } catch (err) {
+      console.warn('[sidebar] failed to load saved sessions', err);
+      el.savedList.innerHTML = '<div class="sidebar-empty">Failed to load saved sessions</div>';
+    }
+  }
+
+  function refresh() {
+    refreshRunning();
+    refreshSaved();
+  }
+
+  // ------------------------- rendering --------------------------------------
+
+  function formatRelative(ms) {
+    if (!ms) return '';
+    const diff = Date.now() - ms;
+    if (diff < 60 * 1000) return 'just now';
+    if (diff < 60 * 60 * 1000) return Math.floor(diff / 60000) + 'm ago';
+    if (diff < 24 * 60 * 60 * 1000) return Math.floor(diff / 3600000) + 'h ago';
+    const days = Math.floor(diff / (24 * 3600000));
+    if (days < 30) return days + 'd ago';
+    return new Date(ms).toLocaleDateString();
+  }
+
+  function basename(p) {
+    if (!p) return '';
+    const clean = String(p).replace(/\/+$/, '');
+    const idx = clean.lastIndexOf('/');
+    return idx >= 0 ? clean.slice(idx + 1) : clean;
+  }
+
+  function svg(path) {
+    return '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' + path + '</svg>';
+  }
+
+  const ICON_STOP = svg('<rect x="6" y="6" width="12" height="12" rx="1"/>');
+  const ICON_PLAY = svg('<polygon points="6 4 20 12 6 20 6 4"/>');
+  const ICON_TRASH = svg('<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>');
+
+  function renderRunning(sessions) {
+    el.runningCount.textContent = String(sessions.length);
+    if (!sessions.length) {
+      el.runningList.innerHTML = '<div class="sidebar-empty">No running sessions</div>';
+      return;
+    }
+    el.runningList.innerHTML = '';
+    const activeId = (window.app && window.app.sessionTabManager && window.app.sessionTabManager.activeTabId) || null;
+    for (const s of sessions) {
+      const item = document.createElement('div');
+      item.className = 'sidebar-item' + (s.id === activeId ? ' active' : '');
+      item.dataset.sessionId = s.id;
+      const workingDir = s.workingDir || '';
+      const name = s.name || basename(workingDir) || s.id.slice(0, 8);
+      const lastMs = s.lastActivity ? new Date(s.lastActivity).getTime() : null;
+      item.innerHTML =
+        '<div class="sidebar-item-top">' +
+          '<span class="sidebar-running-dot" title="Running"></span>' +
+          '<div class="sidebar-item-title">' + escapeHtml(name) + '</div>' +
+          '<div class="sidebar-item-actions">' +
+            '<button class="sidebar-item-action stop-btn" title="Stop session">' + ICON_STOP + '</button>' +
+          '</div>' +
+        '</div>' +
+        (workingDir ? '<div class="sidebar-item-project">' + escapeHtml(workingDir) + '</div>' : '') +
+        (lastMs ? '<div class="sidebar-item-meta"><span>' + formatRelative(lastMs) + '</span></div>' : '');
+
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.sidebar-item-action')) return;
+        attachToRunning(s.id);
+      });
+      item.querySelector('.stop-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        stopRunning(s.id);
+      });
+      el.runningList.appendChild(item);
+    }
+  }
+
+  function renderSaved(sessions) {
+    el.savedCount.textContent = String(sessions.length);
+    if (!sessions.length) {
+      el.savedList.innerHTML = '<div class="sidebar-empty">No saved sessions</div>';
+      return;
+    }
+    el.savedList.innerHTML = '';
+    for (const s of sessions) {
+      const item = document.createElement('div');
+      item.className = 'sidebar-item';
+      item.dataset.sessionId = s.sessionId;
+      item.dataset.projectSlug = s.projectSlug;
+      item.dataset.projectDir = s.projectDir || '';
+      const title = (s.title || '').replace(/\s+/g, ' ').slice(0, 80) || '(no title)';
+      const project = s.projectDir ? basename(s.projectDir) : s.projectSlug;
+      item.innerHTML =
+        '<div class="sidebar-item-top">' +
+          '<div class="sidebar-item-title">' + escapeHtml(title) + '</div>' +
+          '<div class="sidebar-item-actions">' +
+            '<button class="sidebar-item-action resume-btn" title="Resume session">' + ICON_PLAY + '</button>' +
+            '<button class="sidebar-item-action danger delete-btn" title="Delete session">' + ICON_TRASH + '</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="sidebar-item-project">' + escapeHtml(project) + '</div>' +
+        '<div class="sidebar-item-meta">' +
+          '<span>' + formatRelative(s.lastActiveMs) + '</span>' +
+          '<span>' + (s.messageCount || 0) + ' msgs</span>' +
+        '</div>';
+
+      item.querySelector('.resume-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+      });
+      item.querySelector('.delete-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        deleteSaved(s.projectSlug, s.sessionId, title);
+      });
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.sidebar-item-action')) return;
+        openStartModal({ workingDir: s.projectDir, resumeSessionId: s.sessionId });
+      });
+      el.savedList.appendChild(item);
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+  }
+
+  // ------------------------- actions ----------------------------------------
+
+  function attachToRunning(sessionId) {
+    const app = window.app;
+    if (!app || !app.sessionTabManager) return;
+    if (app.sessionTabManager.activeTabId !== sessionId) {
+      app.sessionTabManager.switchToSession(sessionId);
+    }
+    if (!SIDEBAR_PINNED_MEDIA.matches) closeSidebar();
+  }
+
+  async function stopRunning(sessionId) {
+    if (!confirm('Stop this session? The process will be terminated.')) return;
+    try {
+      const r = await fetch('/api/sessions/' + encodeURIComponent(sessionId), { method: 'DELETE' });
+      if (!r.ok) throw new Error(await r.text());
+      refresh();
+    } catch (err) {
+      alert('Failed to stop session: ' + err.message);
+    }
+  }
+
+  async function deleteSaved(projectSlug, sessionId, title) {
+    if (!confirm('Delete saved session "' + (title || sessionId) + '"? This removes the transcript from ~/.claude/projects/.')) return;
+    try {
+      const r = await fetch('/api/saved-sessions/' + encodeURIComponent(projectSlug) + '/' + encodeURIComponent(sessionId), {
+        method: 'DELETE'
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || r.statusText);
+      }
+      refreshSaved();
+    } catch (err) {
+      alert('Failed to delete: ' + err.message);
+    }
+  }
+
+  // ------------------------- new-session flow -------------------------------
+
+  async function handleNewSessionClick() {
+    const app = window.app;
+    if (!app || !app.showFolderBrowser) {
+      alert('Folder browser not ready');
+      return;
+    }
+    // Stash the original handler so we can intercept.
+    const originalHandler = app.onFolderSelected;
+    app.onFolderSelected = (path) => {
+      app.onFolderSelected = originalHandler;
+      openStartModal({ workingDir: path });
+    };
+    app.showFolderBrowser();
+  }
+
+  function openStartModal({ workingDir, resumeSessionId }) {
+    el.startModalDir.textContent = workingDir || '(none)';
+    if (resumeSessionId) {
+      el.startModalResumeWrap.style.display = '';
+      el.startModalResumeId.textContent = resumeSessionId;
+    } else {
+      el.startModalResumeWrap.style.display = 'none';
+    }
+    el.startModal.dataset.workingDir = workingDir || '';
+    el.startModal.dataset.resumeSessionId = resumeSessionId || '';
+    el.startModal.classList.add('open');
+  }
+
+  function closeStartModal() {
+    el.startModal.classList.remove('open');
+  }
+
+  async function startSessionFromModal() {
+    const app = window.app;
+    if (!app || !app.startClaudeSessionWithOptions) {
+      alert('App not ready');
+      return;
+    }
+    const workingDir = el.startModal.dataset.workingDir || undefined;
+    const resumeSessionId = el.startModal.dataset.resumeSessionId || undefined;
+    const permissionMode = el.permissionModeSelect.value;
+    const effort = el.effortSelect.value;
+    // If Bypass is selected we still want the CLI to actually bypass; other
+    // modes go via --permission-mode.
+    const dangerouslySkipPermissions = permissionMode === 'bypassPermissions';
+    const pmForBridge = dangerouslySkipPermissions ? null : permissionMode;
+
+    closeStartModal();
+    if (!SIDEBAR_PINNED_MEDIA.matches) closeSidebar();
+
+    try {
+      await app.startClaudeSessionWithOptions({
+        workingDir,
+        options: {
+          dangerouslySkipPermissions,
+          permissionMode: pmForBridge,
+          effort,
+          resumeSessionId,
+        }
+      });
+      // Give the server a moment to register the session before refreshing.
+      setTimeout(refresh, 400);
+    } catch (err) {
+      alert('Failed to start session: ' + err.message);
+    }
+  }
+
+  // ------------------------- init ------------------------------------------
+
+  function init() {
+    el.sidebar = $('sessionSidebar');
+    el.scrim = $('sidebarScrim');
+    el.toggleBtn = $('sidebarToggleBtn');
+    el.closeBtn = $('sidebarCloseBtn');
+    el.newBtn = $('sidebarNewSessionBtn');
+    el.runningList = $('runningSessionList');
+    el.savedList = $('savedSessionList');
+    el.runningCount = $('runningCount');
+    el.savedCount = $('savedCount');
+    el.startModal = $('sessionStartModal');
+    el.startModalDir = $('sessionStartDir');
+    el.startModalResumeWrap = $('sessionStartResumeInfo');
+    el.startModalResumeId = $('sessionStartResumeId');
+    el.permissionModeSelect = $('permissionModeSelect');
+    el.effortSelect = $('effortSelect');
+    el.sessionStartGoBtn = $('sessionStartGoBtn');
+    el.sessionStartCancelBtn = $('sessionStartCancelBtn');
+    el.closeSessionStartBtn = $('closeSessionStartBtn');
+
+    if (!el.sidebar) return; // HTML not updated yet
+
+    el.toggleBtn && el.toggleBtn.addEventListener('click', toggleSidebar);
+    el.closeBtn && el.closeBtn.addEventListener('click', closeSidebar);
+    el.scrim && el.scrim.addEventListener('click', closeSidebar);
+    el.newBtn && el.newBtn.addEventListener('click', handleNewSessionClick);
+    el.sessionStartGoBtn && el.sessionStartGoBtn.addEventListener('click', startSessionFromModal);
+    el.sessionStartCancelBtn && el.sessionStartCancelBtn.addEventListener('click', closeStartModal);
+    el.closeSessionStartBtn && el.closeSessionStartBtn.addEventListener('click', closeStartModal);
+
+    SIDEBAR_PINNED_MEDIA.addEventListener('change', updatePinnedState);
+    updatePinnedState();
+
+    // Poll saved sessions periodically so changes made elsewhere show up.
+    refreshTimer = setInterval(refresh, 15000);
+    refresh();
+  }
+
+  // Wait for app.js to boot then init.
+  function waitForApp(cb) {
+    if (window.app) return cb();
+    setTimeout(() => waitForApp(cb), 50);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => waitForApp(init));
+  } else {
+    waitForApp(init);
+  }
+
+  // Expose for app.js integration
+  window.sessionSidebar = {
+    refresh,
+    open: openSidebar,
+    close: closeSidebar,
+  };
+})();

@@ -50,9 +50,95 @@
 </head>
 <body>
     <div id="app">
-        
+
+        <!-- Session sidebar (running + saved sessions, new-session button) -->
+        <aside class="session-sidebar" id="sessionSidebar">
+            <div class="sidebar-header">
+                <h2 class="sidebar-title">Sessions</h2>
+                <button class="sidebar-close-btn" id="sidebarCloseBtn" title="Close sidebar" aria-label="Close sidebar">&times;</button>
+            </div>
+            <button class="sidebar-new-session-btn" id="sidebarNewSessionBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                New Session
+            </button>
+            <div class="sidebar-section">
+                <div class="sidebar-section-header">
+                    <span class="sidebar-section-title">Running</span>
+                    <span class="sidebar-section-count" id="runningCount">0</span>
+                </div>
+                <div class="sidebar-list" id="runningSessionList">
+                    <div class="sidebar-empty">No running sessions</div>
+                </div>
+            </div>
+            <div class="sidebar-section">
+                <div class="sidebar-section-header">
+                    <span class="sidebar-section-title">Saved</span>
+                    <span class="sidebar-section-count" id="savedCount">0</span>
+                </div>
+                <div class="sidebar-list" id="savedSessionList">
+                    <div class="sidebar-empty">Loading…</div>
+                </div>
+            </div>
+        </aside>
+        <div class="sidebar-scrim" id="sidebarScrim"></div>
+
+        <!-- Session start options modal (mode + effort) -->
+        <div class="modal" id="sessionStartModal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Start session</h2>
+                    <button class="close-btn" id="closeSessionStartBtn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Directory</label>
+                        <div class="session-start-dir" id="sessionStartDir">—</div>
+                    </div>
+                    <div class="form-group">
+                        <label for="permissionModeSelect">Mode</label>
+                        <select id="permissionModeSelect">
+                            <option value="bypassPermissions" selected>Bypass permissions (skip-perms)</option>
+                            <option value="default">Default (ask)</option>
+                            <option value="acceptEdits">Accept edits</option>
+                            <option value="plan">Plan mode</option>
+                            <option value="auto">Auto</option>
+                            <option value="dontAsk">Don't ask</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="effortSelect">Effort</label>
+                        <select id="effortSelect">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="xhigh" selected>xHigh</option>
+                            <option value="max">Max</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="sessionStartResumeInfo" style="display:none;">
+                        <label>Resuming</label>
+                        <div class="session-start-dir" id="sessionStartResumeId">—</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="sessionStartCancelBtn">Cancel</button>
+                    <button class="btn btn-primary" id="sessionStartGoBtn">Start</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Session Tabs Bar -->
         <div class="session-tabs-bar" id="sessionTabsBar">
+            <button class="sidebar-toggle-btn" id="sidebarToggleBtn" title="Sessions" aria-label="Toggle sessions sidebar">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="6" x2="21" y2="6"/>
+                    <line x1="3" y1="12" x2="21" y2="12"/>
+                    <line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+            </button>
             <div class="tabs-section">
                 <div class="tabs-container" id="tabsContainer">
                     <!-- Tabs will be dynamically added here -->
@@ -305,6 +391,7 @@
     <script src="session-manager.js"></script>
     <script src="icons.js"></script>
     <script src="app.js"></script>
+    <script src="sidebar.js"></script>
     
     <!-- Service Worker Registration -->
     <script>
