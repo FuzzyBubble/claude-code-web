@@ -2426,15 +2426,15 @@ body.sidebar-pinned .chat-view { left: var(--sidebar-width); }
 
 .chat-messages {
   flex: 1 1 auto;
-  min-height: 0;                      /* critical: lets this flex item shrink so overflow works */
+  min-height: 0;
   overflow-y: auto;
-  -webkit-overflow-scrolling: touch;  /* smooth scroll on iOS */
+  -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   padding: 16px 14px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  touch-action: pan-y;                /* body sets pan-x pan-y but some children clobber it */
+  touch-action: pan-y;
 }
 .chat-empty {
   padding: 24px;
@@ -2527,6 +2527,43 @@ body.sidebar-pinned .chat-view { left: var(--sidebar-width); }
 /* Composer inspired by Claude.ai: unified card with the textarea on top,
    a chip row below for mode/effort/model, and the send button docked
    bottom-right inside the card. */
+/* Messages wrap — contains the list + floating scroll button */
+.chat-messages-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.chat-messages-wrap .chat-messages {
+  flex: 1;
+  overflow-y: auto;
+}
+.chat-scroll-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  transition: opacity 0.15s, transform 0.15s;
+  z-index: 10;
+}
+.chat-scroll-btn:hover {
+  background: var(--border);
+  color: var(--text-primary);
+  transform: translateY(1px);
+}
+.chat-scroll-btn[hidden] { display: none; }
+
 .chat-composer {
   padding: 10px 12px 14px;
   flex-shrink: 0;

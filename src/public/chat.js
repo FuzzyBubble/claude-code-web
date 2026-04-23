@@ -191,6 +191,7 @@
 
   function scrollToBottom() {
     el.messages.scrollTop = el.messages.scrollHeight;
+    if (el.scrollBtn) el.scrollBtn.hidden = true;
   }
 
   // Only scroll if the user hasn't scrolled up to read history.
@@ -591,6 +592,17 @@
     el.statusText = $('chatStatusText');
     el.titleEl = $('chatTitle');
     if (!el.root) return;
+
+    el.scrollBtn = $('chatScrollBtn');
+    if (el.scrollBtn) {
+      el.scrollBtn.addEventListener('click', () => scrollToBottom());
+    }
+    if (el.messages) {
+      el.messages.addEventListener('scroll', () => {
+        if (!el.scrollBtn) return;
+        el.scrollBtn.hidden = isNearBottom();
+      }, { passive: true });
+    }
 
     el.sendBtn.addEventListener('click', sendCurrentInput);
     el.stopBtn.addEventListener('click', stopCurrent);
