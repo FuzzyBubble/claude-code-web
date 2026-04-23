@@ -345,6 +345,15 @@
     }
   }
 
+  function hasTerminalSession() {
+    const app = window.app;
+    return !!(app && app.sessionTabManager && app.sessionTabManager.tabs && app.sessionTabManager.tabs.size > 0);
+  }
+
+  function hasChatSession() {
+    return !!(window.chatView && window.chatView._state && window.chatView._state.chatId);
+  }
+
   function setActiveView(view) {
     activeView = view;
     try { localStorage.setItem(LS_VIEW_KEY, view); } catch {}
@@ -353,17 +362,24 @@
     });
     if (view === 'chat') {
       document.body.classList.add('view-chat');
+      // Chat has its own empty state — always remove the generic one.
+      document.body.classList.remove('view-empty-shown');
     } else {
       document.body.classList.remove('view-chat');
+      // If no terminal session is running, show empty state instead of
+      // a blank xterm canvas.
+      if (hasTerminalSession()) {
+        document.body.classList.remove('view-empty-shown');
+      } else {
+        document.body.classList.add('view-empty-shown');
+      }
     }
   }
 
   function hasActiveSession() {
-    // Chat: any loaded chatId. Terminal: any active session tab.
-    if (window.chatView && window.chatView._state && window.chatView._state.chatId) return true;
-    const app = window.app;
-    if (app && app.sessionTabManager && app.sessionTabManager.tabs && app.sessionTabManager.tabs.size > 0) return true;
-    return false;
+    // Depends on which view is active.
+    if (activeView === 'chat') return hasChatSession();
+    return hasTerminalSession();
   }
 
   function updateEmptyState() {

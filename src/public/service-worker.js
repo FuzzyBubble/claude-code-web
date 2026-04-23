@@ -1,4 +1,4 @@
-const CACHE_NAME = 'claude-code-web-v25-custom-ui';
+const CACHE_NAME = 'claude-code-web-v26-custom-ui';
 const urlsToCache = [
   '/',
   '/index.html',
