@@ -522,6 +522,8 @@
     if (!el.sidebar) return; // HTML not updated yet
 
     el.toggleBtn && el.toggleBtn.addEventListener('click', toggleSidebar);
+    const chatBurger = document.getElementById('chatSidebarToggleBtn');
+    if (chatBurger) chatBurger.addEventListener('click', toggleSidebar);
     el.closeBtn && el.closeBtn.addEventListener('click', closeSidebar);
     el.scrim && el.scrim.addEventListener('click', closeSidebar);
     const emptyOpenBtn = $('emptyStateOpenSidebarBtn');
