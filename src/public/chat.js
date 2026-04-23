@@ -55,6 +55,18 @@
     titleEl: null,
   };
 
+  // Server-side diagnostic sink (so we can debug on mobile without devtools).
+  function dlog(tag, data) {
+    try { console.log('[chat]', tag, data); } catch {}
+    try {
+      fetch('/api/client-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag: 'chat:' + tag, data: data ?? null }),
+      });
+    } catch {}
+  }
+
   // ------------------------- Markdown rendering ---------------------------
 
   function renderMarkdown(text) {
@@ -225,7 +237,13 @@
     const boundOrig = orig.bind(window.app);
     window.app.handleMessage = function (message) {
       if (message && (message.type === 'chat_event' || message.type === 'chat_subscribed')) {
-        console.log('[chat]', message.type, message.chatId, message.event && message.event.type);
+        dlog('ws_recv', {
+          type: message.type,
+          chatId: message.chatId,
+          evType: message.event && message.event.type,
+          stateChatId: state.chatId,
+          match: state.chatId && message.chatId === state.chatId,
+        });
       }
       if (message && message.type === 'chat_event') {
         handleChatEvent(message);
@@ -238,7 +256,7 @@
       }
       return boundOrig(message);
     };
-    console.log('[chat] WS hook installed');
+    dlog('hook_installed', { hasApp: !!window.app, hasHandler: !!orig });
   }
 
   function handleChatEvent(msg) {
@@ -320,6 +338,7 @@
   // ------------------------- Actions -------------------------------------
 
   async function open(projectSlug, sessionId, cwd) {
+    dlog('open', { projectSlug, sessionId, cwd });
     state.projectSlug = projectSlug;
     state.chatId = sessionId;
     state.cwd = cwd || null;
@@ -350,6 +369,7 @@
   async function sendCurrentInput() {
     const content = el.input.value.trim();
     if (!content || !state.chatId) return;
+    dlog('send', { chatId: state.chatId, live: state.live, len: content.length });
     // Optimistically render the user message.
     appendMessage({ role: 'user', text: content });
     scrollToBottom();

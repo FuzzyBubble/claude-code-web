@@ -612,6 +612,15 @@ class ClaudeCodeWebServer {
       res.json(result);
     });
 
+    // Debug sink — any client can POST a line here and it shows up in
+    // journalctl. Exists so we can diagnose mobile clients without
+    // devtools. Payload: { tag: string, data: any }.
+    this.app.post('/api/client-log', express.json(), (req, res) => {
+      const { tag, data } = req.body || {};
+      console.log('[client-log]', tag || '?', JSON.stringify(data).slice(0, 400));
+      res.json({ ok: true });
+    });
+
     // Chat-mode: list of chatIds currently live (agent SDK sessions owned
     // by this process). Returned in a shape parallel to /api/sessions/list.
     this.app.get('/api/chat/live', (req, res) => {
