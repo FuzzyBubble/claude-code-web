@@ -2615,3 +2615,27 @@ body.sidebar-pinned .chat-view { left: var(--sidebar-width); }
   .chat-composer-options select { min-height: 36px; }
   #chatInput { font-size: 16px; /* iOS: prevents zoom on focus */ }
 }
+
+/* Empty state shown when no session is active in either view. */
+.view-empty {
+  display: none;
+  position: absolute;
+  top: 0; right: 0; bottom: 0; left: 0;
+  background: var(--bg-primary);
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+body.view-empty-shown .view-empty { display: flex; }
+body.view-empty-shown .terminal-container,
+body.view-empty-shown .chat-view { display: none !important; }
+body.sidebar-pinned .view-empty { left: var(--sidebar-width); }
+.view-empty-inner {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px;
+  max-width: 320px;
+}
+.view-empty-inner svg { color: var(--border-hover); margin-bottom: 12px; }
+.view-empty-inner h2 { font-size: 18px; margin: 0 0 6px; color: var(--text-primary); }
+.view-empty-inner p { font-size: 14px; margin: 0 0 16px; }

@@ -245,9 +245,10 @@
     item.dataset.projectDir = s.projectDir || '';
     const title = (s.title || '').replace(/\s+/g, ' ').slice(0, 80) || '(no title)';
 
-    const primaryBtn = external
-      ? '<button class="sidebar-item-action takeover-btn" title="Take over external session (kills pid ' + s.externalPid + ', resumes here)">' + ICON_TAKEOVER + '</button>'
-      : '<button class="sidebar-item-action resume-btn" title="Resume session">' + ICON_PLAY + '</button>';
+    // All saved items (including external) are now tap-to-open. Takeover
+    // of external processes happens implicitly when the user sends a
+    // message — no popup, no separate flow.
+    const primaryBtn = '<button class="sidebar-item-action resume-btn" title="Open session">' + ICON_PLAY + '</button>';
 
     const runningBadge = external
       ? '<span class="sidebar-item-badge" title="Running externally in another terminal (pid ' + s.externalPid + ')">● live</span>'
@@ -267,12 +268,9 @@
         '<span>' + (s.messageCount || 0) + ' msgs</span>' +
       '</div>';
 
-    const actionFn = external
-      ? () => takeoverExternal(s)
-      : () => openSavedSession(s);
-
-    const primary = item.querySelector('.resume-btn') || item.querySelector('.takeover-btn');
-    primary.addEventListener('click', (e) => { e.stopPropagation(); actionFn(); });
+    const actionFn = () => openSavedSession(s);
+    const primary = item.querySelector('.resume-btn');
+    if (primary) primary.addEventListener('click', (e) => { e.stopPropagation(); actionFn(); });
     item.querySelector('.delete-btn').addEventListener('click', (e) => {
       e.stopPropagation();
       deleteSaved(s.projectSlug, s.sessionId, title);
@@ -305,6 +303,22 @@
       document.body.classList.add('view-chat');
     } else {
       document.body.classList.remove('view-chat');
+    }
+  }
+
+  function hasActiveSession() {
+    // Chat: any loaded chatId. Terminal: any active session tab.
+    if (window.chatView && window.chatView._state && window.chatView._state.chatId) return true;
+    const app = window.app;
+    if (app && app.sessionTabManager && app.sessionTabManager.tabs && app.sessionTabManager.tabs.size > 0) return true;
+    return false;
+  }
+
+  function updateEmptyState() {
+    if (hasActiveSession()) {
+      document.body.classList.remove('view-empty-shown');
+    } else {
+      document.body.classList.add('view-empty-shown');
     }
   }
 
@@ -533,6 +547,21 @@
       btn.addEventListener('click', () => setActiveView(btn.dataset.view));
     });
     setActiveView(activeView);
+
+    const emptyOpenBtnMain = $('viewEmptyOpenSidebarBtn');
+    if (emptyOpenBtnMain) emptyOpenBtnMain.addEventListener('click', openSidebar);
+
+    // Show empty state by default; updates on each refresh and when
+    // chatView opens something.
+    updateEmptyState();
+    const origOpen = window.chatView && window.chatView.open;
+    if (origOpen) {
+      window.chatView.open = function () {
+        const r = origOpen.apply(this, arguments);
+        updateEmptyState();
+        return r;
+      };
+    }
     el.newBtn && el.newBtn.addEventListener('click', handleNewSessionClick);
     el.sessionStartGoBtn && el.sessionStartGoBtn.addEventListener('click', startSessionFromModal);
     el.sessionStartCancelBtn && el.sessionStartCancelBtn.addEventListener('click', closeStartModal);

@@ -1402,6 +1402,22 @@ class ClaudeCodeWebServer {
     let session = this.chatManager.get(chatId);
     if (!session || session.closed) {
       const workingDir = cwd || this.selectedWorkingDir || this.baseFolder;
+
+      // If this session is currently held by an external claude process
+      // (e.g. a terminal elsewhere), SIGTERM it so the SDK can claim the
+      // transcript. No popup — implicit takeover on first send.
+      if (resumeSessionId) {
+        const externalProcesses = require('./external-processes');
+        const pidMap = externalProcesses.externalSessionPidMap();
+        const match = pidMap.get(resumeSessionId.toLowerCase());
+        if (match) {
+          console.log('[chat] auto-takeover pid', match.pid, 'for session', resumeSessionId);
+          externalProcesses.terminateProcess(match.pid);
+          // Brief pause so the process has time to release the file.
+          await new Promise((r) => setTimeout(r, 700));
+        }
+      }
+
       session = this.chatManager.ensure(chatId, {
         cwd: workingDir,
         sessionId: resumeSessionId || null,

@@ -267,7 +267,14 @@
     state.cwd = cwd || null;
     state.streamingAssistant = null;
     el.titleEl.textContent = cwd ? basename(cwd) : sessionId.slice(0, 8);
-    await loadTranscript(projectSlug, sessionId);
+    // Leave empty state behind.
+    document.body.classList.remove('view-empty-shown');
+    if (projectSlug) {
+      await loadTranscript(projectSlug, sessionId);
+    } else {
+      clearMessages();
+      el.empty.style.display = '';
+    }
     // Subscribe so we receive live events if someone else is already
     // chatting in this session (or if takeover happens).
     sendWS({ type: 'chat_subscribe', chatId: sessionId });
@@ -393,5 +400,5 @@
     init();
   }
 
-  window.chatView = { open, hide: hideChatView, show: showChatView };
+  window.chatView = { open, hide: hideChatView, show: showChatView, _state: state };
 })();
