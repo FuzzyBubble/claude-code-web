@@ -2686,26 +2686,42 @@ body.view-empty-shown #modeSwitcher {
 
 /* "Claude is thinking" indicator — shown between sending a message and
    the first assistant event arriving. Cycles through fun verbs like
-   the CLI's status spinner. */
-.chat-msg--busy { justify-content: flex-start; }
-.chat-busy {
-  display: inline-flex;
+   the CLI's status spinner. Full-width bar pinned to the bottom of
+   the message list, visually distinct from any chat bubble. */
+.chat-busy-bar {
+  display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.02);
-  font-size: 13.5px;
+  padding: 10px 16px;
+  margin: 8px 0 4px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(90deg,
+    rgba(var(--accent-rgb, 99,102,241), 0.08) 0%,
+    rgba(var(--accent-rgb, 99,102,241), 0.03) 100%);
+  font-size: 13px;
   color: var(--text-secondary);
+  position: relative;
+  overflow: hidden;
+  /* Subtle shimmer sweep */
+  animation: chatBusyShimmer 2.4s infinite linear;
 }
-.chat-busy-word::after { content: '…'; }
-.chat-busy-dots {
+.chat-busy-bar::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--accent);
+  opacity: 0.7;
+  animation: chatBusyPulse 1.2s infinite ease-in-out;
+}
+.chat-busy-bar-dots {
   display: inline-flex;
   gap: 3px;
   align-items: center;
+  flex-shrink: 0;
 }
-.chat-busy-dots span {
+.chat-busy-bar-dots span {
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -2713,9 +2729,17 @@ body.view-empty-shown #modeSwitcher {
   opacity: 0.4;
   animation: chatBusyDot 1s infinite ease-in-out;
 }
-.chat-busy-dots span:nth-child(2) { animation-delay: 0.15s; }
-.chat-busy-dots span:nth-child(3) { animation-delay: 0.3s; }
+.chat-busy-bar-dots span:nth-child(2) { animation-delay: 0.15s; }
+.chat-busy-bar-dots span:nth-child(3) { animation-delay: 0.3s; }
 @keyframes chatBusyDot {
   0%, 80%, 100% { opacity: 0.3; transform: scale(0.9); }
   40% { opacity: 1; transform: scale(1.2); }
+}
+@keyframes chatBusyPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+@keyframes chatBusyShimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }

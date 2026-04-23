@@ -141,6 +141,10 @@
       bubble.textContent = m.text || '';
     }
     el.messages.appendChild(wrap);
+    // Keep the busy indicator pinned to the very bottom at all times.
+    if (state.busyIndicatorEl && state.busyIndicatorEl.parentNode === el.messages) {
+      el.messages.appendChild(state.busyIndicatorEl);
+    }
     return wrap;
   }
 
@@ -150,18 +154,16 @@
 
   function showBusyIndicator() {
     if (state.busyIndicatorEl) return;
-    const wrap = document.createElement('div');
-    wrap.className = 'chat-msg chat-msg--busy';
-    wrap.innerHTML =
-      '<div class="chat-busy">' +
-        '<span class="chat-busy-dots"><span></span><span></span><span></span></span>' +
-        '<span class="chat-busy-word">Thinking</span>' +
-      '</div>';
-    el.messages.appendChild(wrap);
-    state.busyIndicatorEl = wrap;
+    const bar = document.createElement('div');
+    bar.className = 'chat-busy-bar';
+    bar.innerHTML =
+      '<span class="chat-busy-bar-dots"><span></span><span></span><span></span></span>' +
+      '<span class="chat-busy-bar-word">Thinking</span>';
+    el.messages.appendChild(bar);
+    state.busyIndicatorEl = bar;
     state.busy = true;
     scrollToBottom();
-    const wordEl = wrap.querySelector('.chat-busy-word');
+    const wordEl = bar.querySelector('.chat-busy-bar-word');
     let i = Math.floor(Math.random() * BUSY_WORDS.length);
     state.busyIntervalId = setInterval(() => {
       i = (i + 1) % BUSY_WORDS.length;
