@@ -280,7 +280,8 @@
         // Already rendered optimistically on send; nothing to do.
         break;
       case 'assistant': {
-        hideBusyIndicator();
+        // Don't hide the busy indicator here — more tool calls may follow.
+        // It's hidden only when the 'result' event fires (turn complete).
         // SDK emits a full assistant message per turn — render the text
         // and any tool_use blocks.
         const msgInner = ev.message || {};
