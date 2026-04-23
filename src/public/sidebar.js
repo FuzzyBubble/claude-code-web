@@ -87,7 +87,12 @@
   async function refreshRunning() {
     try {
       const data = await fetchJson('/api/sessions/list');
-      renderRunning(data.sessions || []);
+      // Only surface sessions with a live PTY. Zombie metadata (active:false)
+      // persists after a server restart and is useless to the user — it
+      // cannot be attached to, just re-started, which is what New Session
+      // / Resume is for.
+      const live = (data.sessions || []).filter((s) => s.active);
+      renderRunning(live);
     } catch (err) {
       console.warn('[sidebar] failed to load running sessions', err);
     }
