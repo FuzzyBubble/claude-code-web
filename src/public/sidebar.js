@@ -86,18 +86,21 @@
     return r.json();
   }
 
-  // A single fetch pair feeds both lists. Anything actively running (PTY
-  // owned here, OR an external claude process we detected) goes to
-  // Running; everything else lands in Projects.
+  // A single fetch pair feeds both lists. Running = anything actively
+  // live: terminal PTYs owned here, chat-mode SDK sessions owned here,
+  // AND external claude processes we detected. Saved = the rest.
   async function refresh() {
     let live = [];
+    let chatLive = [];
     let saved = [];
     try {
-      const [liveData, savedData] = await Promise.all([
+      const [liveData, chatData, savedData] = await Promise.all([
         fetchJson('/api/sessions/list'),
+        fetchJson('/api/chat/live'),
         fetchJson('/api/saved-sessions'),
       ]);
       live = (liveData.sessions || []).filter((s) => s.active);
+      chatLive = (chatData.sessions || []).filter((s) => !s.closed);
       saved = savedData.sessions || [];
     } catch (err) {
       console.warn('[sidebar] refresh failed', err);
@@ -105,10 +108,16 @@
       return;
     }
 
-    const externals = saved.filter((s) => s.externalPid);
-    const rest = saved.filter((s) => !s.externalPid);
+    // If a saved session is also live as a chat session, it shouldn't
+    // appear twice — drop duplicates from the external-externals list.
+    const chatChatIds = new Set(chatLive.map((c) => c.chatId));
+    const chatSessionIds = new Set(chatLive.map((c) => c.sessionId).filter(Boolean));
+    const externals = saved.filter((s) =>
+      s.externalPid && !chatChatIds.has(s.sessionId) && !chatSessionIds.has(s.sessionId)
+    );
+    const rest = saved.filter((s) => !s.externalPid && !chatChatIds.has(s.sessionId));
 
-    renderRunning(live, externals);
+    renderRunning(live, externals, chatLive);
     renderSaved(rest);
   }
 
@@ -142,8 +151,9 @@
   // Circular-arrow swap icon for "take over"
   const ICON_TAKEOVER = svg('<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>');
 
-  function renderRunning(liveSessions, externals) {
-    const total = liveSessions.length + externals.length;
+  function renderRunning(liveSessions, externals, chatLive) {
+    chatLive = chatLive || [];
+    const total = liveSessions.length + externals.length + chatLive.length;
     el.runningCount.textContent = String(total);
     if (!total) {
       el.runningList.innerHTML = '<div class="sidebar-empty">No running sessions</div>';
@@ -152,6 +162,47 @@
     el.runningList.innerHTML = '';
 
     const activeId = (window.app && window.app.sessionTabManager && window.app.sessionTabManager.activeTabId) || null;
+
+    // Chat-mode live sessions (SDK-spawned). Tap to re-open in chat view,
+    // per-item exit button to SIGTERM gracefully.
+    for (const c of chatLive) {
+      const item = document.createElement('div');
+      item.className = 'sidebar-item';
+      item.dataset.chatId = c.chatId;
+      const name = basename(c.cwd || '') || (c.chatId || '').slice(0, 8);
+      const lastRel = c.lastActivityMs ? formatRelative(c.lastActivityMs) : '';
+      item.innerHTML =
+        '<div class="sidebar-item-top">' +
+          '<span class="sidebar-running-dot" title="Chat running"></span>' +
+          '<div class="sidebar-item-title">' + escapeHtml(name) + '</div>' +
+          '<div class="sidebar-item-actions">' +
+            '<button class="sidebar-item-action stop-btn" title="Exit chat session">' + ICON_STOP + '</button>' +
+          '</div>' +
+        '</div>' +
+        (c.cwd ? '<div class="sidebar-item-project">' + escapeHtml(c.cwd) + '</div>' : '') +
+        (lastRel ? '<div class="sidebar-item-meta"><span>' + lastRel + '</span></div>' : '');
+
+      item.addEventListener('click', (e) => {
+        if (e.target.closest('.sidebar-item-action')) return;
+        if (window.chatView) {
+          // Derive projectSlug from cwd (Claude CLI convention).
+          const slug = (c.cwd || '').replace(/\//g, '-');
+          window.chatView.open(slug, c.sessionId || c.chatId, c.cwd);
+          if (!SIDEBAR_PINNED_MEDIA.matches) closeSidebar();
+        }
+      });
+      item.querySelector('.stop-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!confirm('Exit this chat session?')) return;
+        try {
+          await fetch('/api/chat/live/' + encodeURIComponent(c.chatId), { method: 'DELETE' });
+          refresh();
+        } catch (err) {
+          alert('Failed to exit: ' + err.message);
+        }
+      });
+      el.runningList.appendChild(item);
+    }
 
     // Sessions owned by this web UI — clickable to attach, stop button.
     for (const s of liveSessions) {
