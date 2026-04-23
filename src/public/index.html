@@ -205,12 +205,15 @@
                     <p>Connecting to Claude Code...</p>
                 </div>
                 <div class="start-prompt" id="startPrompt" style="display: none;">
-                    <h2>Choose Your Assistant</h2>
-                    <p>Select one to start in this directory.</p>
+                    <h2>No session selected</h2>
+                    <p>Open the sidebar (<span class="kbd-hint">☰</span>) to start a new session or resume a saved one.</p>
                     <div class="start-buttons">
-                        <button id="startBtn" class="btn btn-primary">Start Claude</button>
-                        <button id="dangerousSkipBtn" class="btn btn-danger" title="Dangerously skip permissions. Use with caution.">Skip permissions</button>
+                        <button id="emptyStateOpenSidebarBtn" class="btn btn-primary">Open sidebar</button>
                     </div>
+                    <!-- Hidden handlers kept so any late call to showOverlay('startPrompt')
+                         from legacy code paths doesn't error out. -->
+                    <button id="startBtn" hidden></button>
+                    <button id="dangerousSkipBtn" hidden></button>
                 </div>
                 <div class="error-message" id="errorMessage" style="display: none;">
                     <h3>Connection Error</h3>

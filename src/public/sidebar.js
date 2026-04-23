@@ -359,6 +359,8 @@
     el.toggleBtn && el.toggleBtn.addEventListener('click', toggleSidebar);
     el.closeBtn && el.closeBtn.addEventListener('click', closeSidebar);
     el.scrim && el.scrim.addEventListener('click', closeSidebar);
+    const emptyOpenBtn = $('emptyStateOpenSidebarBtn');
+    if (emptyOpenBtn) emptyOpenBtn.addEventListener('click', openSidebar);
     el.newBtn && el.newBtn.addEventListener('click', handleNewSessionClick);
     el.sessionStartGoBtn && el.sessionStartGoBtn.addEventListener('click', startSessionFromModal);
     el.sessionStartCancelBtn && el.sessionStartCancelBtn.addEventListener('click', closeStartModal);
