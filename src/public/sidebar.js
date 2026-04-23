@@ -84,33 +84,30 @@
     return r.json();
   }
 
-  async function refreshRunning() {
+  // A single fetch pair feeds both lists. Anything actively running (PTY
+  // owned here, OR an external claude process we detected) goes to
+  // Running; everything else lands in Projects.
+  async function refresh() {
+    let live = [];
+    let saved = [];
     try {
-      const data = await fetchJson('/api/sessions/list');
-      // Only surface sessions with a live PTY. Zombie metadata (active:false)
-      // persists after a server restart and is useless to the user — it
-      // cannot be attached to, just re-started, which is what New Session
-      // / Resume is for.
-      const live = (data.sessions || []).filter((s) => s.active);
-      renderRunning(live);
+      const [liveData, savedData] = await Promise.all([
+        fetchJson('/api/sessions/list'),
+        fetchJson('/api/saved-sessions'),
+      ]);
+      live = (liveData.sessions || []).filter((s) => s.active);
+      saved = savedData.sessions || [];
     } catch (err) {
-      console.warn('[sidebar] failed to load running sessions', err);
+      console.warn('[sidebar] refresh failed', err);
+      el.savedList.innerHTML = '<div class="sidebar-empty">Failed to load sessions</div>';
+      return;
     }
-  }
 
-  async function refreshSaved() {
-    try {
-      const data = await fetchJson('/api/saved-sessions');
-      renderSaved(data.sessions || []);
-    } catch (err) {
-      console.warn('[sidebar] failed to load saved sessions', err);
-      el.savedList.innerHTML = '<div class="sidebar-empty">Failed to load saved sessions</div>';
-    }
-  }
+    const externals = saved.filter((s) => s.externalPid);
+    const rest = saved.filter((s) => !s.externalPid);
 
-  function refresh() {
-    refreshRunning();
-    refreshSaved();
+    renderRunning(live, externals);
+    renderSaved(rest);
   }
 
   // ------------------------- rendering --------------------------------------
@@ -143,15 +140,19 @@
   // Circular-arrow swap icon for "take over"
   const ICON_TAKEOVER = svg('<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/>');
 
-  function renderRunning(sessions) {
-    el.runningCount.textContent = String(sessions.length);
-    if (!sessions.length) {
+  function renderRunning(liveSessions, externals) {
+    const total = liveSessions.length + externals.length;
+    el.runningCount.textContent = String(total);
+    if (!total) {
       el.runningList.innerHTML = '<div class="sidebar-empty">No running sessions</div>';
       return;
     }
     el.runningList.innerHTML = '';
+
     const activeId = (window.app && window.app.sessionTabManager && window.app.sessionTabManager.activeTabId) || null;
-    for (const s of sessions) {
+
+    // Sessions owned by this web UI — clickable to attach, stop button.
+    for (const s of liveSessions) {
       const item = document.createElement('div');
       item.className = 'sidebar-item' + (s.id === activeId ? ' active' : '');
       item.dataset.sessionId = s.id;
@@ -178,6 +179,13 @@
         stopRunning(s.id);
       });
       el.runningList.appendChild(item);
+    }
+
+    // Sessions running externally — same shape, but with a takeover
+    // action instead of attach/stop. Reuses buildSessionItem's external
+    // path for consistent styling and the "● live" badge.
+    for (const s of externals) {
+      el.runningList.appendChild(buildSessionItem(s));
     }
   }
 
